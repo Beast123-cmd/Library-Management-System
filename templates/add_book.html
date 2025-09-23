@@ -1,0 +1,14 @@
+<!-- templates/add_book.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>Add Book</h2>
+<form method="post">
+    <label>Title:</label>
+    <input type="text" name="title" required><br>
+    <label>Author:</label>
+    <input type="text" name="author" required><br>
+    <label>Total Copies:</label>
+    <input type="number" name="total_copies" min="1" value="1" required><br>
+    <button type="submit">Add Book</button>
+</form>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Books</h2>
+
+<!-- Admin: Add Book Button -->
+{% if session.role == 'admin' %}
+    <a href="{{ url_for('add_book') }}" class="btn btn-success mb-3">Add New Book</a>
+{% endif %}
+
+<!-- Search and filter form -->
+<form method="get" class="mb-3 d-flex gap-2">
+    <input type="text" name="q" placeholder="Search by title or author" value="{{ q }}" class="form-control">
+    <select name="available" class="form-control">
+        <option value="">All</option>
+        <option value="1" {% if available_filter=='1' %}selected{% endif %}>Available Only</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Filter</button>
+</form>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Total Copies</th>
+            <th>Available Copies</th>
+            {% if session.role == 'admin' %}
+                <th>Actions</th>
+            {% endif %}
+            <th>Issue</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for book in books %}
+        <tr>
+            <td>{{ book.title }}</td>
+            <td>{{ book.author }}</td>
+            <td>{{ book.total_copies }}</td>
+            <td>{{ book.available_copies }}</td>
+            {% if session.role == 'admin' %}
+                <td>
+                    <a href="{{ url_for('edit_book', book_id=book.book_id) }}" class="btn btn-warning btn-sm">Edit</a>
+                </td>
+            {% endif %}
+            <td>
+            {% if session.get("role") == "member" %}
+            {% if book.available_copies > 0 %}
+            <a href="{{ url_for('issue_book', book_id=book.book_id) }}" 
+               class="btn btn-warning btn-sm">Issue</a>
+            {% else %}
+            <span class="badge bg-danger">Not Available</span>
+            {% endif %}
+            {% endif %}
+
+            {% if session.get("role") == "admin" %}
+            <a href="{{ url_for('edit_book', book_id=book.book_id) }}" 
+           class="btn btn-primary btn-sm">Edit</a>
+           {% endif %}
+           </td>
+
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
