@@ -1,22 +1,68 @@
 {% extends "base.html" %}
+{% block title %}Members - Library DBMS{% endblock %}
+{% block page_title %}Members Management{% endblock %}
 {% block content %}
-<h2>Members</h2>
-<table class="table table-bordered">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Email</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for member in members %}
-        <tr>
-            <td>{{ member.member_id }}</td>
-            <td>{{ member.name }}</td>
-            <td>{{ member.email }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+
+<div class="members-header">
+    <div class="totals text-muted">
+        <span><strong>Total Members:</strong> {{ members|length }}</span>
+        <span style="margin-left:12px"><strong>Active Loans:</strong> {{ members|sum(attribute='active_loans') }}</span>
+    </div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>🆔 Member ID</th>
+                <th>👤 Name</th>
+                <th>📧 Email</th>
+                <th>📚 Total Loans</th>
+                <th>📖 Active Loans</th>
+                <th>✅ Completed Loans</th>
+                <th>📊 Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for member in members %}
+            <tr>
+                <td><strong>#{{ member.member_id }}</strong></td>
+                <td><strong>{{ member.name }}</strong></td>
+                <td>{{ member.email }}</td>
+                <td>
+                    <span class="badge bg-primary">{{ member.total_loans or 0 }}</span>
+                </td>
+                <td>
+                    {% if member.active_loans > 0 %}
+                        <span class="badge bg-warning">{{ member.active_loans }}</span>
+                    {% else %}
+                        <span class="badge bg-success">0</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge bg-success">{{ member.completed_loans or 0 }}</span>
+                </td>
+                <td>
+                    {% if member.active_loans >= 5 %}
+                        <span class="badge bg-danger">Limit Reached</span>
+                    {% elif member.active_loans >= 3 %}
+                        <span class="badge bg-warning">Approaching Limit</span>
+                    {% else %}
+                        <span class="badge bg-success">Within Limit</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not members %}
+<div class="empty-state">
+    <div class="empty-icon">👥</div>
+    <h3>No members found</h3>
+    <p>No members have been registered yet.</p>
+</div>
+{% endif %}
+
 {% endblock %}

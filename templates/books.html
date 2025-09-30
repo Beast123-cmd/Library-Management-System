@@ -1,67 +1,106 @@
 {% extends "base.html" %}
+{% block title %}Books - Library DBMS{% endblock %}
+{% block page_title %}Books Management{% endblock %}
 {% block content %}
 
-<h2>Books</h2>
-
-<!-- Admin: Add Book Button -->
-{% if session.role == 'admin' %}
-    <a href="{{ url_for('add_book') }}" class="btn btn-success mb-3">Add New Book</a>
-{% endif %}
+<div class="books-header">
+    <!-- Admin: Add Book Button -->
+    {% if session.role == 'admin' %}
+        <a href="{{ url_for('add_book') }}" class="btn btn-success">
+            <span>📚</span> Add New Book
+        </a>
+    {% endif %}
+    <div class="totals text-muted">
+        <span><strong>Total Titles:</strong> {{ total_titles }}</span>
+        <span style="margin-left:12px"><strong>Total Copies:</strong> {{ total_copies }}</span>
+    </div>
+</div>
 
 <!-- Search and filter form -->
-<form method="get" class="mb-3 d-flex gap-2">
-    <input type="text" name="q" placeholder="Search by title or author" value="{{ q }}" class="form-control">
-    <select name="available" class="form-control">
-        <option value="">All</option>
-        <option value="1" {% if available_filter=='1' %}selected{% endif %}>Available Only</option>
-    </select>
-    <button type="submit" class="btn btn-primary">Filter</button>
-</form>
+<div class="search-container">
+    <form method="get" class="search-form">
+        <div class="form-group">
+            <input type="text" name="q" placeholder="Search by title or author..." value="{{ q }}" class="form-control">
+        </div>
+        <div class="form-group">
+            <select name="available" class="form-control">
+                <option value="">All Books</option>
+                <option value="1" {% if available_filter=='1' %}selected{% endif %}>Available Only</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <span>🔍</span> Search
+        </button>
+    </form>
+</div>
 
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Total Copies</th>
-            <th>Available Copies</th>
-            {% if session.role == 'admin' %}
-                <th>Actions</th>
-            {% endif %}
-            <th>Issue</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for book in books %}
-        <tr>
-            <td>{{ book.title }}</td>
-            <td>{{ book.author }}</td>
-            <td>{{ book.total_copies }}</td>
-            <td>{{ book.available_copies }}</td>
-            {% if session.role == 'admin' %}
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>📖 Title</th>
+                <th>✍️ Author</th>
+                <th>📚 Total</th>
+                <th>✅ Available</th>
+                <th>📅 Year</th>
+                <th>⚡ Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for book in books %}
+            <tr>
+                <td><strong>{{ book.title }}</strong></td>
+                <td>{{ book.author }}</td>
+                <td>{{ book.total_copies }}</td>
                 <td>
-                    <a href="{{ url_for('edit_book', book_id=book.book_id) }}" class="btn btn-warning btn-sm">Edit</a>
+                    {% if book.available_copies > 0 %}
+                        <span class="badge bg-success">{{ book.available_copies }} Available</span>
+                    {% else %}
+                        <span class="badge bg-danger">Not Available</span>
+                    {% endif %}
                 </td>
-            {% endif %}
-            <td>
-            {% if session.get("role") == "member" %}
-            {% if book.available_copies > 0 %}
-            <a href="{{ url_for('issue_book', book_id=book.book_id) }}" 
-               class="btn btn-warning btn-sm">Issue</a>
-            {% else %}
-            <span class="badge bg-danger">Not Available</span>
-            {% endif %}
-            {% endif %}
+                <td>{{ book.publish_year or '-' }}</td>
+                <td>
+                    <div class="action-buttons">
+                        {% if session.get("role") == "admin" %}
+                            {% if book.available_copies > 0 %}
+                                <a href="{{ url_for('issue_book', book_id=book.book_id) }}" 
+                                   class="btn btn-warning btn-sm">
+                                    <span>📖</span> Issue
+                                </a>
+                            {% else %}
+                                <span class="btn btn-sm disabled">Not Available</span>
+                            {% endif %}
+                            <a href="{{ url_for('edit_book', book_id=book.book_id) }}" 
+                               class="btn btn-primary btn-sm">
+                                <span>✏️</span> Edit
+                            </a>
+                            <form action="{{ url_for('delete_book', book_id=book.book_id) }}" method="POST" style="display:inline;" 
+                                  onsubmit="return confirm('Are you sure you want to delete this book? This action cannot be undone!')">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <span>🗑️</span> Delete
+                                </button>
+                            </form>
+                        {% else %}
+                            <span class="text-muted">Admin only</span>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 
-            {% if session.get("role") == "admin" %}
-            <a href="{{ url_for('edit_book', book_id=book.book_id) }}" 
-           class="btn btn-primary btn-sm">Edit</a>
-           {% endif %}
-           </td>
-
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+{% if not books %}
+<div class="empty-state">
+    <div class="empty-icon">📚</div>
+    <h3>No books found</h3>
+    <p>Try adjusting your search criteria or add some books to get started.</p>
+    {% if session.role == 'admin' %}
+        <a href="{{ url_for('add_book') }}" class="btn btn-primary">Add First Book</a>
+    {% endif %}
+</div>
+{% endif %}
 
 {% endblock %}

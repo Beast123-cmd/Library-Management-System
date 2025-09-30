@@ -101,6 +101,7 @@ def login():
 
 # -------------------- INDEX --------------------
 @app.route("/index")
+@app.route("/dashboard")
 @login_required
 def index():
     return render_template("index.html", role=session.get("role"), username=session.get("username"))
@@ -189,12 +190,18 @@ def books():
     sql += " ORDER BY title"
     cursor.execute(sql, params)
     books_list = cursor.fetchall()
+    
+    # Calculate totals
+    total_titles = len(books_list)
+    total_copies = sum(book['total_copies'] for book in books_list)
+    
     conn.close()
-    return render_template("books.html", books=books_list, q=q, available_filter=available_filter)
+    return render_template("books.html", books=books_list, q=q, available_filter=available_filter, total_titles=total_titles, total_copies=total_copies)
 
 # -------------------- ISSUE BOOK --------------------
 @app.route("/books/issue/<int:book_id>", methods=["GET", "POST"])
 @login_required
+@admin_required
 def issue_book(book_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -210,14 +217,13 @@ def issue_book(book_id):
 
     # If POST request → issue the book
     if request.method == "POST":
-        # Get member_id of current user
-        cursor.execute("SELECT member_id FROM members WHERE name=%s", (session["username"],))
-        member = cursor.fetchone()
-        if not member:
+        member_id = request.form.get("member_id")
+        due_days = int(request.form.get("due_days", DEFAULT_LOAN_DAYS))
+        
+        if not member_id:
             conn.close()
-            flash("Member record not found.", "danger")
-            return redirect(url_for("books"))
-        member_id = member["member_id"]
+            flash("Please select a member.", "danger")
+            return redirect(url_for("issue_book", book_id=book_id))
 
         # Check if available copies > 0
         if book["available_copies"] <= 0:
@@ -225,9 +231,21 @@ def issue_book(book_id):
             conn.close()
             return redirect(url_for("books"))
 
+        # Check if member has reached the 5 book limit
+        cursor.execute(
+            "SELECT COUNT(*) as active_loans FROM transactions WHERE member_id=%s AND status='issued'",
+            (member_id,)
+        )
+        active_loans = cursor.fetchone()["active_loans"]
+        
+        if active_loans >= 5:
+            conn.close()
+            flash("Member has reached the maximum limit of 5 books!", "danger")
+            return redirect(url_for("issue_book", book_id=book_id))
+
         # Issue the book
         issue_date = datetime.now()
-        due_date = issue_date + timedelta(days=DEFAULT_LOAN_DAYS)
+        due_date = issue_date + timedelta(days=due_days)
 
         cursor.execute(
             "INSERT INTO transactions (member_id, book_id, issue_date, due_date, status) "
@@ -247,9 +265,13 @@ def issue_book(book_id):
         flash("Book issued successfully!", "success")
         return redirect(url_for("transactions"))
 
+    # Fetch all members for the dropdown
+    cursor.execute("SELECT member_id, name FROM members ORDER BY name")
+    members = cursor.fetchall()
+    
     cursor.close()
     conn.close()
-    return render_template("issue_book.html", book=book)
+    return render_template("issue_book.html", book=book, members=members)
 
 
 
@@ -257,20 +279,12 @@ def issue_book(book_id):
 # -------------------- RETURN BOOK --------------------
 @app.route("/books/return/<int:txn_id>", methods=["POST"])
 @login_required
+@admin_required
 def return_book(txn_id):
-    username = session.get("username")
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT member_id FROM members WHERE name=%s", (username,))
-    member = cursor.fetchone()
-    if not member:
-        conn.close()
-        flash("Member record not found.", "danger")
-        return redirect(url_for("transactions"))
-    member_id = member["member_id"]
-
-    cursor.execute("SELECT * FROM transactions WHERE txn_id=%s AND member_id=%s", (txn_id, member_id))
+    cursor.execute("SELECT * FROM transactions WHERE txn_id=%s", (txn_id,))
     txn = cursor.fetchone()
     if not txn or txn["status"] != "issued":
         conn.close()
@@ -386,6 +400,30 @@ def export_transactions():
     output.headers["Content-Disposition"] = "attachment; filename=transactions.csv"
     output.headers["Content-Type"] = "text/csv"
     return output
+
+# -------------------- MEMBERS --------------------
+@app.route("/members")
+@login_required
+@admin_required
+def members():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute("""
+        SELECT m.member_id, m.name, m.email,
+               COUNT(t.txn_id) as total_loans,
+               SUM(CASE WHEN t.status = 'issued' THEN 1 ELSE 0 END) as active_loans,
+               SUM(CASE WHEN t.status = 'returned' THEN 1 ELSE 0 END) as completed_loans
+        FROM members m
+        LEFT JOIN transactions t ON m.member_id = t.member_id
+        GROUP BY m.member_id, m.name, m.email
+        ORDER BY m.name
+    """)
+    
+    members = cursor.fetchall()
+    conn.close()
+    
+    return render_template("members.html", members=members)
 
 # -------------------- ADMIN DASHBOARD --------------------
 @app.route("/admin/dashboard")

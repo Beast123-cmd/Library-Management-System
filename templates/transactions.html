@@ -1,58 +1,113 @@
 {% extends "base.html" %}
+{% block title %}Transactions - Library DBMS{% endblock %}
+{% block page_title %}Transaction History{% endblock %}
 {% block content %}
-<div class="container mt-4">
-  <h2 class="mb-4">Transactions</h2>
-  <div class="mb-3">
-    <a href="{{ url_for('export_transactions') }}" class="btn btn-primary">
-      Export CSV
-    </a>
-  </div>
-  <table class="table table-bordered table-striped">
-    <thead>
-      <tr>
-        {% if session['role'] == 'admin' %}
-          <th>Txn ID</th>
-          <th>Member</th>
-        {% endif %}
-        <th>Book</th>
-        <th>Issue Date</th>
-        <th>Due Date</th>
-        <th>Return Date</th>
-        <th>Status</th>
-        <th>Fine</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-{% for txn in transactions %}
-<tr>
-    <td>{{ txn.txn_id }}</td>
-    <td>{{ txn.member_name }}</td>
-    <td>{{ txn.book_title }}</td>
-    <td>{{ txn.issue_date.strftime("%Y-%m-%d %H:%M:%S") if txn.issue_date }}</td>
-    <td>{{ txn.due_date.strftime("%Y-%m-%d %H:%M:%S") if txn.due_date }}</td>
-    <td>{{ txn.return_date.strftime("%Y-%m-%d %H:%M:%S") if txn.return_date }}</td>
-    <td>
-        {% if txn.status == 'issued' %}
-            <span class="badge bg-warning">Issued</span>
-        {% elif txn.status == 'returned' %}
-            <span class="badge bg-success">Returned</span>
-        {% else %}
-            <span class="badge bg-secondary">{{ txn.status }}</span>
-        {% endif %}
-    </td>
-    <td>{{ "%.2f"|format(txn.fine) }}</td>
-    <td>
-        {% if session.get("role") == "member" and txn.status == "issued" %}
-            <form action="{{ url_for('return_book', txn_id=txn.txn_id) }}" method="POST" style="display:inline;">
-                <button type="submit" class="btn btn-sm btn-success">Return</button>
-            </form>
-        {% endif %}
-    </td>
-</tr>
-{% endfor %}
-</tbody>
 
-  </table>
+<div class="transactions-header">
+    {% if session['role'] == 'admin' %}
+        <a href="{{ url_for('export_transactions') }}" class="btn btn-primary">
+            <span>📊</span> Export CSV
+        </a>
+    {% endif %}
 </div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                {% if session['role'] == 'admin' %}
+                    <th>🆔 Txn ID</th>
+                    <th>👤 Member</th>
+                {% endif %}
+                <th>📖 Book</th>
+                <th>📅 Issue Date</th>
+                <th>⏰ Due Date</th>
+                <th>📆 Days Passed</th>
+                <th>↩️ Return Date</th>
+                <th>📊 Status</th>
+                <th>💰 Fine (₹)</th>
+                <th>⚡ Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for txn in transactions %}
+            <tr>
+                {% if session['role'] == 'admin' %}
+                    <td><strong>#{{ txn.txn_id }}</strong></td>
+                    <td>{{ txn.member_name }}</td>
+                {% endif %}
+                <td><strong>{{ txn.book_title }}</strong></td>
+                <td>{{ txn.issue_date | format_dt }}</td>
+                <td>{{ txn.due_date | format_dt }}</td>
+                <td>
+                    {% if txn.status == 'issued' and txn.due_date %}
+                        {% set days_passed = (now() - txn.due_date).days %}
+                        {% if days_passed > 0 %}
+                            <span class="badge bg-danger">{{ days_passed }} days overdue</span>
+                        {% else %}
+                            <span class="badge bg-success">{{ -days_passed }} days left</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td>{{ txn.return_date | format_dt }}</td>
+                <td>
+                    {% if txn.status == 'issued' %}
+                        <span class="badge bg-warning">📖 Issued</span>
+                    {% elif txn.status == 'returned' %}
+                        <span class="badge bg-success">✅ Returned</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ txn.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if txn.status == 'issued' and txn.due_date %}
+                        {% set days_passed = (now() - txn.due_date).days %}
+                        {% if days_passed > 0 %}
+                            {% if days_passed <= 15 %}
+                                {% set potential_fine = days_passed * 5.0 %}
+                                <span class="badge bg-warning">₹{{ "%.2f"|format(potential_fine) }} ({{ days_passed }} days × ₹5)</span>
+                            {% else %}
+                                {% set first_15_fine = 15 * 5.0 %}
+                                {% set remaining_days = days_passed - 15 %}
+                                {% set additional_fine = remaining_days * 50.0 %}
+                                {% set potential_fine = first_15_fine + additional_fine %}
+                                <span class="badge bg-danger">₹{{ "%.2f"|format(potential_fine) }} (15×₹5 + {{ remaining_days }}×₹50)</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-success">₹0.00</span>
+                        {% endif %}
+                    {% elif txn.fine > 0 %}
+                        <span class="badge bg-danger">₹{{ "%.2f"|format(txn.fine) }}</span>
+                    {% else %}
+                        <span class="badge bg-success">₹0.00</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if session.get('role') == 'admin' and txn.status == 'issued' %}
+                        <form action="{{ url_for('return_book', txn_id=txn.txn_id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-success btn-sm">
+                                <span>↩️</span> Return
+                            </button>
+                        </form>
+                    {% else %}
+                        <span class="text-muted">Admin only</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not transactions %}
+<div class="empty-state">
+    <div class="empty-icon">📋</div>
+    <h3>No transactions found</h3>
+    <p>You haven't borrowed any books yet. Start by browsing our collection!</p>
+    <a href="{{ url_for('books') }}" class="btn btn-primary">Browse Books</a>
+</div>
+{% endif %}
+
 {% endblock %}
