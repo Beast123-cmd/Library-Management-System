@@ -12,15 +12,14 @@ app = FastAPI(
 )
 
 # ---- CORS Middleware ----
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    # Add your deployed Vercel URL here when ready
-]
+origins = settings.CORS_ORIGINS
+# Render/Vercel support: allow wildcard if specified, or default list
+allow_all = "*" in origins or (len(origins) == 1 and origins[0] == "*")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=origins if not allow_all else ["*"],
+    allow_credentials=False if allow_all else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
