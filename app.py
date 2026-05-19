@@ -1,36 +1,99 @@
-# app.py (cleaned & fixed: uses books_new everywhere)
-
+# ==============================================================================
+# 1. IMPORTS & INITIALIZATION
+# ==============================================================================
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, make_response
 )
 from collections import Counter
-import mysql.connector
+import psycopg2
+import psycopg2.extras
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, timedelta
 import csv
 import io
 import json
+import os
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key"  # replace with a secure secret in production
 app.jinja_env.globals['datetime'] = datetime
+app.jinja_env.globals['now'] = datetime.now
 
-# ---------- CONFIG ----------
-FINE_PER_DAY = 5.00
+# Jinja filter: safely format datetime or return as-is if already a string/empty
+@app.template_filter('format_dt')
+def format_dt(value):
+    if not value:
+        return ""
+    # If it's already a string (SQLite often returns ISO strings), normalize lightly
+    if isinstance(value, str):
+        # Trim sub-second precision and replace 'T' with space if present
+        normalized = value.replace('T', ' ')
+        if '.' in normalized:
+            normalized = normalized.split('.', 1)[0]
+        return normalized
+    # Try datetime formatting
+    try:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(value)
+
+# ==============================================================================
+# 2. CONFIGURATION
+# ==============================================================================
+# Fine structure: First 15 days - ₹5/day, After 15 days - ₹50/day
+FINE_FIRST_15_DAYS = 5.00  # Fine per day for first 15 days
+FINE_AFTER_15_DAYS = 50.00  # Fine per day after 15 days
 DEFAULT_LOAN_DAYS = 7
+# Always use the cloud database on Vercel or locally
+# (Configuration handled below in the Database Connection section)
 
-# -------------------- DATABASE CONNECTION --------------------
+# ==============================================================================
+# 3. DATABASE CONNECTION & POOLING
+# ==============================================================================
+from psycopg2.pool import ThreadedConnectionPool
+from dotenv import load_dotenv
+
+load_dotenv()  # Load variables from .env if present
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set. Please set it in your .env file or Vercel environment.")
+
+# Initialize a global connection pool
+try:
+    db_pool = ThreadedConnectionPool(1, 20, DATABASE_URL)
+except Exception as e:
+    print("Error creating connection pool:", e)
+    db_pool = None
+
+class PooledConnection:
+    def __init__(self, conn):
+        self._conn = conn
+    
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+    
+    def close(self):
+        if db_pool:
+            db_pool.putconn(self._conn)
+        else:
+            self._conn.close()
+
 def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="library_admin",
-        password="libpass123",
-        database="library_dbms"
-    )
+    if db_pool:
+        return PooledConnection(db_pool.getconn())
+    else:
+        return psycopg2.connect(DATABASE_URL)
 
-# -------------------- DECORATORS --------------------
+
+def init_db():
+    pass
+
+# ==============================================================================
+# 4. UTILITY DECORATORS
+# ==============================================================================
 def login_required(f):
     @wraps(f)
     def inner(*args, **kwargs):
@@ -48,9 +111,14 @@ def admin_required(f):
         return f(*args, **kwargs)
     return inner
 
-# -------------------- SIGNUP --------------------
+# ==============================================================================
+# 5. AUTHENTICATION ROUTES (LOGIN / SIGNUP / LOGOUT)
+# ==============================================================================
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
+    if "username" in session:
+        return redirect(url_for("index"))
+
     if request.method == "POST":
         name = request.form["name"].strip()
         email = request.form["email"].strip()
@@ -59,7 +127,7 @@ def signup():
             flash("All fields are required.", "danger")
             return redirect(url_for("signup"))
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT * FROM members WHERE email=%s OR name=%s", (email, name))
         if cursor.fetchone():
             conn.close()
@@ -78,15 +146,17 @@ def signup():
         return redirect(url_for("login"))
     return render_template("signup.html")
 
-# -------------------- LOGIN --------------------
 @app.route("/", methods=["GET", "POST"])
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if "username" in session:
+        return redirect(url_for("index"))
+
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"].strip()
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE username=%s", (username,))
         user = cursor.fetchone()
         conn.close()
@@ -99,8 +169,9 @@ def login():
         return redirect(url_for("index"))
     return render_template("login.html")
 
-# -------------------- INDEX --------------------
-@app.route("/index")
+# ==============================================================================
+# 6. CORE ROUTES (DASHBOARD)
+# ==============================================================================
 @app.route("/dashboard")
 @login_required
 def index():
@@ -113,30 +184,51 @@ def logout():
     flash("Logged out successfully.", "info")
     return redirect(url_for("login"))
 
-# -------------------- BOOKS --------------------
+# ==============================================================================
+# 7. BOOK MANAGEMENT ROUTES (VIEW, ADD, EDIT, DELETE)
+# ==============================================================================
 @app.route("/books/edit/<int:book_id>", methods=["GET", "POST"])
 @login_required
 @admin_required
 def edit_book(book_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    if request.method == "POST":
-        title = request.form["title"].strip()
-        author = request.form["author"].strip()
-        total_copies = int(request.form.get("total_copies", 1))
-        cursor.execute(
-            "UPDATE books_new SET title=%s, author=%s, total_copies=%s WHERE book_id=%s",
-            (title, author, total_copies, book_id)
-        )
-        conn.commit()
-        conn.close()
-        flash("Book updated.", "success")
-        return redirect(url_for("books"))
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if request.method == "POST":
+            title = request.form["title"].strip()
+            author = request.form["author"].strip()
+            total_copies = int(request.form.get("total_copies", 1))
+            publish_year = request.form.get("publish_year")
+            publish_year = int(publish_year) if publish_year else None
+            # Prevent duplicate titles on different rows
+            cursor.execute(
+                "SELECT book_id FROM books_new WHERE LOWER(title) = LOWER(%s) AND book_id <> %s",
+                (title, book_id)
+            )
+            conflict = cursor.fetchone()
+            if conflict:
+                flash("A book with this title already exists. Please update copies instead.", "danger")
+                return redirect(url_for("edit_book", book_id=book_id))
 
-    cursor.execute("SELECT * FROM books_new WHERE book_id=%s", (book_id,))
-    book = cursor.fetchone()
-    conn.close()
-    return render_template("edit_book.html", book=book)
+            cursor.execute(
+                "UPDATE books_new SET title=%s, author=%s, total_copies=%s, publish_year=%s WHERE book_id=%s",
+                (title, author, total_copies, publish_year, book_id)
+            )
+            conn.commit()
+            flash("Book updated.", "success")
+            return redirect(url_for("books"))
+
+        cursor.execute("SELECT * FROM books_new WHERE book_id=%s", (book_id,))
+        book = cursor.fetchone()
+        if not book:
+            flash("Book not found.", "danger")
+            return redirect(url_for("books"))
+        return render_template("edit_book.html", book=book)
+    except Exception as e:
+        flash(f"Error updating book: {str(e)}", "danger")
+        return redirect(url_for("books"))
+    finally:
+        conn.close()
 
 @app.route("/books/add", methods=["GET", "POST"])
 @login_required
@@ -146,18 +238,31 @@ def add_book():
         title = request.form["title"].strip()
         author = request.form["author"].strip()
         total_copies = int(request.form.get("total_copies", 1))
+        publish_year = request.form.get("publish_year")
+        publish_year = int(publish_year) if publish_year else None
         if not title or not author:
             flash("Title and Author are required.", "danger")
             return redirect(url_for("add_book"))
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO books_new (title, author, total_copies, available_copies) VALUES (%s, %s, %s, %s)",
-            (title, author, total_copies, total_copies)
-        )
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # If a book with the same title already exists, just increment copies
+        cursor.execute("SELECT book_id, total_copies, available_copies FROM books_new WHERE LOWER(title) = LOWER(%s)", (title,))
+        existing = cursor.fetchone()
+        if existing:
+            new_total = (existing.get("total_copies") or 0) + total_copies
+            new_available = (existing.get("available_copies") or 0) + total_copies
+            cursor.execute(
+                "UPDATE books_new SET total_copies = %s, available_copies = %s, author = %s, publish_year = COALESCE(%s, publish_year) WHERE book_id = %s",
+                (new_total, new_available, author, publish_year, existing["book_id"]) 
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO books_new (title, author, total_copies, available_copies, publish_year) VALUES (%s, %s, %s, %s, %s)",
+                (title, author, total_copies, total_copies, publish_year)
+            )
         conn.commit()
-        cursor.close()
         conn.close()
 
         flash(f"Book '{title}' added successfully!", "success")
@@ -171,40 +276,54 @@ def books():
     q = request.args.get("q", "").strip()
     available_filter = request.args.get("available", "").strip()
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    sql = "SELECT * FROM books_new"
-    params = []
+    try:
+        sql = "SELECT * FROM books_new"
+        params = []
 
-    if q:
-        sql += " WHERE title LIKE %s OR author LIKE %s"
-        like_q = f"%{q}%"
-        params.extend([like_q, like_q])
+        if q:
+            sql += " WHERE title ILIKE %s OR author ILIKE %s"
+            like_q = f"%{q}%"
+            params.extend([like_q, like_q])
 
-    if available_filter == "1":
-        if "WHERE" in sql:
-            sql += " AND available_copies > 0"
-        else:
-            sql += " WHERE available_copies > 0"
+        if available_filter == "1":
+            if "WHERE" in sql:
+                sql += " AND available_copies > 0"
+            else:
+                sql += " WHERE available_copies > 0"
 
-    sql += " ORDER BY title"
-    cursor.execute(sql, params)
-    books_list = cursor.fetchall()
-    
-    # Calculate totals
-    total_titles = len(books_list)
-    total_copies = sum(book['total_copies'] for book in books_list)
-    
-    conn.close()
-    return render_template("books.html", books=books_list, q=q, available_filter=available_filter, total_titles=total_titles, total_copies=total_copies)
+        sql += " ORDER BY title"
+        cursor.execute(sql, params)
+        books_list = cursor.fetchall()
 
-# -------------------- ISSUE BOOK --------------------
-@app.route("/books/issue/<int:book_id>", methods=["GET", "POST"])
+        # Real-time totals based on current filters
+        total_titles = len(books_list)
+        total_copies = sum((b.get('total_copies') or 0) for b in books_list)
+
+        return render_template(
+            "books.html",
+            books=books_list,
+            q=q,
+            available_filter=available_filter,
+            total_titles=total_titles,
+            total_copies=total_copies
+        )
+    except Exception as e:
+        flash(f"Error loading books: {str(e)}", "danger")
+        return render_template("books.html", books=[], q=q, available_filter=available_filter, total_titles=0, total_copies=0)
+    finally:
+        conn.close()
+
+# ==============================================================================
+# 8. TRANSACTION & CIRCULATION ROUTES (ISSUE & RETURN)
+# ==============================================================================
+@app.route("/issue/<int:book_id>", methods=["GET", "POST"])
 @login_required
 @admin_required
 def issue_book(book_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Fetch book details from books_new
     cursor.execute("SELECT * FROM books_new WHERE book_id = %s", (book_id,))
@@ -259,7 +378,6 @@ def issue_book(book_id):
         )
 
         conn.commit()
-        cursor.close()
         conn.close()
 
         flash("Book issued successfully!", "success")
@@ -269,56 +387,89 @@ def issue_book(book_id):
     cursor.execute("SELECT member_id, name FROM members ORDER BY name")
     members = cursor.fetchall()
     
-    cursor.close()
     conn.close()
     return render_template("issue_book.html", book=book, members=members)
 
-
-
-
-# -------------------- RETURN BOOK --------------------
-@app.route("/books/return/<int:txn_id>", methods=["POST"])
+@app.route("/return/<int:txn_id>", methods=["POST"])
 @login_required
 @admin_required
 def return_book(txn_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT * FROM transactions WHERE txn_id=%s", (txn_id,))
-    txn = cursor.fetchone()
-    if not txn or txn["status"] != "issued":
-        conn.close()
-        flash("Transaction invalid.", "warning")
+    try:
+        cursor.execute("SELECT * FROM transactions WHERE txn_id=%s", (txn_id,))
+        txn = cursor.fetchone()
+        if not txn or txn.get("status") != "issued":
+            flash("Transaction invalid.", "warning")
+            return redirect(url_for("transactions"))
+
+        now = datetime.now()
+        fine = 0.0
+        if txn.get("due_date"):
+            due_date = txn["due_date"]
+            if isinstance(due_date, str):
+                try:
+                    due_date = datetime.strptime(due_date, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    due_date = datetime.fromisoformat(due_date)
+            delta_days = (now.date() - due_date.date()).days
+            if delta_days > 0:
+                # Calculate fine with tiered structure
+                if delta_days <= 15:
+                    fine = round(delta_days * FINE_FIRST_15_DAYS, 2)
+                else:
+                    first_15_days_fine = 15 * FINE_FIRST_15_DAYS
+                    remaining_days = delta_days - 15
+                    additional_fine = remaining_days * FINE_AFTER_15_DAYS
+                    fine = round(first_15_days_fine + additional_fine, 2)
+
+        cursor.execute(
+            "UPDATE transactions SET status='returned', return_date=%s, fine=%s WHERE txn_id=%s",
+            (now, fine, txn_id)
+        )
+        cursor.execute(
+            "UPDATE books_new SET available_copies = available_copies + 1 WHERE book_id=%s",
+            (txn["book_id"],)
+        )
+
+        conn.commit()
+        flash(f"Book returned. Fine: ₹{fine:.2f}" if fine > 0 else "Book returned successfully!", "success")
         return redirect(url_for("transactions"))
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error returning book: {str(e)}", "danger")
+        return redirect(url_for("transactions"))
+    finally:
+        conn.close()
 
-    now = datetime.now()
-    fine = 0.0
-    if txn.get("due_date"):
-        delta_days = (now.date() - txn["due_date"].date()).days
-        if delta_days > 0:
-            fine = round(delta_days * FINE_PER_DAY, 2)
+@app.route("/books/delete/<int:book_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_book(book_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute(
-        "UPDATE transactions SET status='returned', return_date=%s, fine=%s WHERE txn_id=%s",
-        (now, fine, txn_id)
-    )
-    cursor.execute(
-        "UPDATE books_new SET available_copies = available_copies + 1 WHERE book_id=%s",
-        (txn["book_id"],)
-    )
+    # Prevent deletion if there are any transactions for this book (keeps history intact)
+    cursor.execute("SELECT COUNT(*) AS cnt FROM transactions WHERE book_id=%s", (book_id,))
+    count_row = cursor.fetchone()
+    has_references = (count_row.get("cnt") if isinstance(count_row, dict) else 0) or 0
+    if has_references > 0:
+        conn.close()
+        flash("Cannot delete this book because transactions exist for it.", "warning")
+        return redirect(url_for("books"))
 
+    cursor.execute("DELETE FROM books_new WHERE book_id=%s", (book_id,))
     conn.commit()
-    cursor.close()
     conn.close()
-    flash(f"Book returned. Fine: {fine:.2f}" if fine > 0 else "Book returned successfully!", "success")
-    return redirect(url_for("transactions"))
+    flash("Book deleted.", "success")
+    return redirect(url_for("books"))
 
-# -------------------- TRANSACTIONS --------------------
 @app.route('/transactions')
 @login_required
 def transactions():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if session['role'] == 'admin':
         cursor.execute("""
@@ -361,17 +512,15 @@ def transactions():
         """, (member_id,))
 
     transactions = cursor.fetchall()
-    cursor.close()
     conn.close()
     return render_template('transactions.html', transactions=transactions)
 
-# -------------------- EXPORT CSV --------------------
 @app.route("/transactions/export")
 @login_required
 @admin_required
 def export_transactions():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute("""
         SELECT t.txn_id, m.name AS member_name, b.title AS book_title,
                t.issue_date, t.due_date, t.return_date, t.status, t.fine
@@ -390,9 +539,9 @@ def export_transactions():
             r["txn_id"],
             r["member_name"],
             r["book_title"],
-            r["issue_date"].strftime("%Y-%m-%d %H:%M:%S") if r["issue_date"] else "",
-            r["due_date"].strftime("%Y-%m-%d %H:%M:%S") if r.get("due_date") else "",
-            r["return_date"].strftime("%Y-%m-%d %H:%M:%S") if r.get("return_date") else "",
+            r["issue_date"],
+            r["due_date"],
+            r["return_date"],
             r["status"],
             f"{r['fine']:.2f}"
         ])
@@ -401,13 +550,15 @@ def export_transactions():
     output.headers["Content-Type"] = "text/csv"
     return output
 
-# -------------------- MEMBERS --------------------
+# ==============================================================================
+# 9. MEMBER MANAGEMENT ROUTES
+# ==============================================================================
 @app.route("/members")
 @login_required
 @admin_required
 def members():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     
     cursor.execute("""
         SELECT m.member_id, m.name, m.email,
@@ -425,56 +576,155 @@ def members():
     
     return render_template("members.html", members=members)
 
-# -------------------- ADMIN DASHBOARD --------------------
+# ==============================================================================
+# 10. ADMIN & EXPORT UTILITIES
+# ==============================================================================
 @app.route("/admin/dashboard")
 @login_required
 @admin_required
 def admin_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("SELECT status, COUNT(*) AS count FROM transactions GROUP BY status")
-    status_data = cursor.fetchall()
-    pie_labels = [row["status"] for row in status_data]
-    pie_values = [row["count"] for row in status_data]
+    try:
+        # 1. Transaction Status Distribution (Pie Chart)
+        cursor.execute("SELECT status, COUNT(*) AS count FROM transactions GROUP BY status")
+        status_data = cursor.fetchall()
+        pie_labels = [row["status"] for row in status_data]
+        pie_values = [row["count"] for row in status_data]
 
-    cursor.execute("""
-        SELECT b.title, COUNT(*) AS times_issued
-        FROM transactions t
-        JOIN books_new b ON t.book_id = b.book_id
-        WHERE t.status IN ('issued','returned')
-        GROUP BY t.book_id
-        ORDER BY times_issued DESC
-        LIMIT 5
-    """)
-    top_books_data = cursor.fetchall()
-    bar_labels = [row["title"] for row in top_books_data]
-    bar_values = [row["times_issued"] for row in top_books_data]
+        # 2. Top 5 Most Issued Books (Bar Chart)
+        cursor.execute("""
+            SELECT b.title, COUNT(*) AS times_issued
+            FROM transactions t
+            JOIN books_new b ON t.book_id = b.book_id
+            WHERE t.status IN ('issued','returned')
+            GROUP BY t.book_id, b.title
+            ORDER BY times_issued DESC
+            LIMIT 5
+        """)
+        top_books_data = cursor.fetchall()
+        bar_labels = [row["title"] for row in top_books_data]
+        bar_values = [row["times_issued"] for row in top_books_data]
 
-    cursor.execute("""
-        SELECT m.name AS member_name, b.title AS book_title, t.status, t.issue_date
-        FROM transactions t
-        JOIN members m ON t.member_id = m.member_id
-        JOIN books_new b ON t.book_id = b.book_id
-        ORDER BY t.issue_date DESC
-        LIMIT 5
-    """)
-    recent_activities_data = cursor.fetchall()
-    recent_activities = [
-        f"{row['member_name']} {row['status']} '{row['book_title']}'"
-        for row in recent_activities_data
-    ]
+        # 3. Monthly Transaction Trends (Line Chart)
+        cursor.execute("""
+            SELECT to_char(issue_date, 'YYYY-MM') as month, COUNT(*) as count
+            FROM transactions
+            WHERE issue_date >= CURRENT_DATE - INTERVAL '12 months'
+            GROUP BY to_char(issue_date, 'YYYY-MM')
+            ORDER BY month
+        """)
+        monthly_data = cursor.fetchall()
+        line_labels = [row["month"] for row in monthly_data]
+        line_values = [row["count"] for row in monthly_data]
 
-    conn.close()
-    return render_template(
-        "dashboard.html",
-        pie_labels=pie_labels,
-        pie_values=pie_values,
-        bar_labels=bar_labels,
-        bar_values=bar_values,
-        recent_activities=recent_activities
-    )
+        # 4. Overdue Books (Doughnut Chart)
+        cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN t.status = 'issued' AND t.due_date < CURRENT_DATE THEN 'Overdue'
+                    WHEN t.status = 'issued' AND t.due_date >= CURRENT_DATE THEN 'On Time'
+                    ELSE 'Returned'
+                END as status,
+                COUNT(*) as count
+            FROM transactions t
+            WHERE t.status = 'issued'
+            GROUP BY 
+                CASE 
+                    WHEN t.status = 'issued' AND t.due_date < CURRENT_DATE THEN 'Overdue'
+                    WHEN t.status = 'issued' AND t.due_date >= CURRENT_DATE THEN 'On Time'
+                    ELSE 'Returned'
+                END
+        """)
+        overdue_data = cursor.fetchall()
+        overdue_labels = [row["status"] for row in overdue_data]
+        overdue_values = [row["count"] for row in overdue_data]
 
-# -------------------- RUN --------------------
+        # 5. Member Activity (Horizontal Bar Chart)
+        cursor.execute("""
+            SELECT m.name, COUNT(t.txn_id) as activity_count
+            FROM members m
+            LEFT JOIN transactions t ON m.member_id = t.member_id
+            GROUP BY m.member_id, m.name
+            ORDER BY activity_count DESC
+            LIMIT 10
+        """)
+        member_data = cursor.fetchall()
+        member_labels = [row["name"] for row in member_data]
+        member_values = [row["activity_count"] for row in member_data]
+
+        # 6. Current Books Issued to Each Member
+        cursor.execute("""
+            SELECT m.name, COUNT(t.txn_id) as current_loans
+            FROM members m
+            LEFT JOIN transactions t ON m.member_id = t.member_id AND t.status = 'issued'
+            GROUP BY m.member_id, m.name
+            HAVING COUNT(t.txn_id) > 0
+            ORDER BY current_loans DESC
+        """)
+        current_loans_data = cursor.fetchall()
+
+        # 7. Recent Activities
+        cursor.execute("""
+            SELECT m.name AS member_name, b.title AS book_title, t.status, t.issue_date
+            FROM transactions t
+            JOIN members m ON t.member_id = m.member_id
+            JOIN books_new b ON t.book_id = b.book_id
+            ORDER BY t.issue_date DESC
+            LIMIT 10
+        """)
+        recent_activities_data = cursor.fetchall()
+        recent_activities = [
+            f"{row['member_name']} {row['status']} '{row['book_title']}'"
+            for row in recent_activities_data
+        ]
+
+        # 8. Statistics Cards
+        cursor.execute("SELECT COUNT(*) as total_books FROM books_new")
+        total_books = cursor.fetchone()["total_books"]
+        
+        cursor.execute("SELECT COUNT(*) as total_members FROM members")
+        total_members = cursor.fetchone()["total_members"]
+        
+        cursor.execute("SELECT COUNT(*) as active_loans FROM transactions WHERE status = 'issued'")
+        active_loans = cursor.fetchone()["active_loans"]
+        
+        cursor.execute("SELECT COUNT(*) as overdue_books FROM transactions WHERE status = 'issued' AND due_date < CURRENT_DATE")
+        overdue_books = cursor.fetchone()["overdue_books"]
+
+        return render_template(
+            "dashboard.html",
+            pie_labels=pie_labels,
+            pie_values=pie_values,
+            bar_labels=bar_labels,
+            bar_values=bar_values,
+            line_labels=line_labels,
+            line_values=line_values,
+            overdue_labels=overdue_labels,
+            overdue_values=overdue_values,
+            member_labels=member_labels,
+            member_values=member_values,
+            current_loans_data=current_loans_data,
+            recent_activities=recent_activities,
+            total_books=total_books,
+            total_members=total_members,
+            active_loans=active_loans,
+            overdue_books=overdue_books
+        )
+    except Exception as e:
+        flash(f"Error loading dashboard: {str(e)}", "danger")
+        return redirect(url_for("index"))
+    finally:
+        conn.close()
+
+# ==============================================================================
+# 11. APPLICATION EXECUTION
+# ==============================================================================
 if __name__ == "__main__":
+    # Initialize database
+    init_db()
+    print("🚀 Starting Library Management System with Neon PostgreSQL...")
+    print("🔐 Admin credentials: admin / admin123")
+    print("🌐 Open: http://localhost:5000")
     app.run(debug=True)

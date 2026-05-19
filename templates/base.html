@@ -22,6 +22,7 @@
 <div class="wrapper">
 
     <!-- Sidebar -->
+    {% if session.get('username') %}
     <nav class="sidebar">
         <div class="sidebar-header">
             <h3>Library DBMS</h3>
@@ -41,6 +42,7 @@
             <!-- Dark mode button moved to header -->
         </div>
     </nav>
+    {% endif %}
 
     <!-- Main Content -->
     <div class="main-content">
@@ -48,7 +50,9 @@
             <h2>{% block page_title %}{% endblock %}</h2>
             <div class="user-info">
                 <button id="darkToggle" class="dark-mode-toggle" aria-pressed="false">🌙 Dark Mode</button>
+                {% if session.get('username') %}
                 <span>{{ session.get('username') }}</span>
+                {% endif %}
             </div>
         </header>
 

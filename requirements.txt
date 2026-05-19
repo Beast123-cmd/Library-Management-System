@@ -1,6 +1,5 @@
 Flask
-mysql-connector-python
 werkzeug
 Flask-Session
-
 psycopg2-binary
+python-dotenv
