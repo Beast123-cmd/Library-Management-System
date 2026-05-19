@@ -3,7 +3,8 @@ from flask import (
     session, flash, make_response
 )
 from collections import Counter
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, timedelta
@@ -13,27 +14,7 @@ import json
 import os
 
 # Custom row factory to convert datetime strings back to datetime objects
-def dict_factory(cursor, row):
-    d = {}
-    for idx, col in enumerate(cursor.description):
-        value = row[idx]
-        # Convert datetime strings back to datetime objects
-        if col[0] in ['issue_date', 'due_date', 'return_date', 'created_at'] and value:
-            try:
-                if isinstance(value, str):
-                    # Handle different datetime formats
-                    if 'T' in value:
-                        value = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                    else:
-                        # Try parsing SQLite datetime format
-                        try:
-                            value = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-                        except ValueError:
-                            value = datetime.fromisoformat(value)
-            except (ValueError, TypeError):
-                pass  # Keep as string if conversion fails
-        d[col[0]] = value
-    return d
+
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key"  # replace with a secure secret in production
@@ -70,117 +51,14 @@ else:
     DATABASE = os.path.join(os.path.dirname(__file__), 'library.db')
 
 # -------------------- DATABASE CONNECTION --------------------
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_zyYesiKh2V0L@ep-raspy-meadow-akbv2n5w-pooler.c-3.us-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = dict_factory
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 def init_db():
-    """Initialize the database with tables and sample data."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Create tables
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT DEFAULT 'member',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS members (
-            member_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS books_new (
-            book_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            author TEXT NOT NULL,
-            total_copies INTEGER DEFAULT 1,
-            available_copies INTEGER DEFAULT 1,
-            publish_year INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
-    # Ensure publish_year column exists for older databases
-    cursor.execute("PRAGMA table_info(books_new)")
-    pragma_rows = cursor.fetchall()
-    cols = []
-    for row in pragma_rows:
-        # Row may be dict (via dict_factory) or tuple
-        try:
-            name = row.get('name') if isinstance(row, dict) else row[1]
-        except Exception:
-            name = None
-        if name:
-            cols.append(name)
-    if 'publish_year' not in cols:
-        cursor.execute("ALTER TABLE books_new ADD COLUMN publish_year INTEGER")
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS transactions (
-            txn_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            member_id INTEGER NOT NULL,
-            book_id INTEGER NOT NULL,
-            issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            due_date TIMESTAMP,
-            return_date TIMESTAMP NULL,
-            status TEXT DEFAULT 'issued',
-            fine REAL DEFAULT 0.0,
-            FOREIGN KEY (member_id) REFERENCES members(member_id),
-            FOREIGN KEY (book_id) REFERENCES books_new(book_id)
-        )
-    ''')
-    
-    # Insert admin user if not exists
-    admin_password = generate_password_hash('admin123')
-    cursor.execute('''
-        INSERT OR IGNORE INTO users (username, password, role) 
-        VALUES ('admin', ?, 'admin')
-    ''', (admin_password,))
-    
-    # Insert sample member
-    cursor.execute('''
-        INSERT OR IGNORE INTO members (name, email) 
-        VALUES ('John Doe', 'john@example.com')
-    ''')
-    
-    # Insert sample books
-    sample_books = [
-        ('The Great Gatsby', 'F. Scott Fitzgerald', 3, 3, 1925),
-        ('To Kill a Mockingbird', 'Harper Lee', 2, 2, 1960),
-        ('1984', 'George Orwell', 4, 4, 1949),
-        ('Pride and Prejudice', 'Jane Austen', 2, 2, 1813),
-        ('The Catcher in the Rye', 'J.D. Salinger', 1, 1, 1951)
-    ]
-    
-    for title, author, total, available, year in sample_books:
-        cursor.execute('''
-            INSERT OR IGNORE INTO books_new (title, author, total_copies, available_copies, publish_year) 
-            VALUES (?, ?, ?, ?, ?)
-        ''', (title, author, total, available, year))
-    
-    # Create a case-insensitive UNIQUE index on title (no data modifications)
-    try:
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ux_books_title_ci ON books_new (LOWER(title))"
-        )
-    except Exception:
-        # Avoid breaking startup; app logic also enforces uniqueness
-        pass
-
-    conn.commit()
-    conn.close()
+    pass
 
 # -------------------- DECORATORS --------------------
 def login_required(f):
@@ -211,17 +89,17 @@ def signup():
             flash("All fields are required.", "danger")
             return redirect(url_for("signup"))
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM members WHERE email=? OR name=?", (email, name))
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM members WHERE email=%s OR name=%s", (email, name))
         if cursor.fetchone():
             conn.close()
             flash("Member exists. Please login.", "warning")
             return redirect(url_for("login"))
-        cursor.execute("INSERT INTO members (name, email) VALUES (?, ?)", (name, email))
+        cursor.execute("INSERT INTO members (name, email) VALUES (%s, %s)", (name, email))
         member_id = cursor.lastrowid
         hashed_password = generate_password_hash(password)
         cursor.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+            "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
             (name, hashed_password, "member")
         )
         conn.commit()
@@ -238,8 +116,8 @@ def login():
         username = request.form["username"].strip()
         password = request.form["password"].strip()
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username=?", (username,))
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users WHERE username=%s", (username,))
         user = cursor.fetchone()
         conn.close()
         if not user or not check_password_hash(user["password"], password):
@@ -271,7 +149,7 @@ def logout():
 @admin_required
 def edit_book(book_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         if request.method == "POST":
             title = request.form["title"].strip()
@@ -281,7 +159,7 @@ def edit_book(book_id):
             publish_year = int(publish_year) if publish_year else None
             # Prevent duplicate titles on different rows
             cursor.execute(
-                "SELECT book_id FROM books_new WHERE LOWER(title) = LOWER(?) AND book_id <> ?",
+                "SELECT book_id FROM books_new WHERE LOWER(title) = LOWER(%s) AND book_id <> %s",
                 (title, book_id)
             )
             conflict = cursor.fetchone()
@@ -290,14 +168,14 @@ def edit_book(book_id):
                 return redirect(url_for("edit_book", book_id=book_id))
 
             cursor.execute(
-                "UPDATE books_new SET title=?, author=?, total_copies=?, publish_year=? WHERE book_id=?",
+                "UPDATE books_new SET title=%s, author=%s, total_copies=%s, publish_year=%s WHERE book_id=%s",
                 (title, author, total_copies, publish_year, book_id)
             )
             conn.commit()
             flash("Book updated.", "success")
             return redirect(url_for("books"))
 
-        cursor.execute("SELECT * FROM books_new WHERE book_id=?", (book_id,))
+        cursor.execute("SELECT * FROM books_new WHERE book_id=%s", (book_id,))
         book = cursor.fetchone()
         if not book:
             flash("Book not found.", "danger")
@@ -324,21 +202,21 @@ def add_book():
             return redirect(url_for("add_book"))
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # If a book with the same title already exists, just increment copies
-        cursor.execute("SELECT book_id, total_copies, available_copies FROM books_new WHERE LOWER(title) = LOWER(?)", (title,))
+        cursor.execute("SELECT book_id, total_copies, available_copies FROM books_new WHERE LOWER(title) = LOWER(%s)", (title,))
         existing = cursor.fetchone()
         if existing:
             new_total = (existing.get("total_copies") or 0) + total_copies
             new_available = (existing.get("available_copies") or 0) + total_copies
             cursor.execute(
-                "UPDATE books_new SET total_copies = ?, available_copies = ?, author = ?, publish_year = COALESCE(?, publish_year) WHERE book_id = ?",
+                "UPDATE books_new SET total_copies = %s, available_copies = %s, author = %s, publish_year = COALESCE(%s, publish_year) WHERE book_id = %s",
                 (new_total, new_available, author, publish_year, existing["book_id"]) 
             )
         else:
             cursor.execute(
-                "INSERT INTO books_new (title, author, total_copies, available_copies, publish_year) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO books_new (title, author, total_copies, available_copies, publish_year) VALUES (%s, %s, %s, %s, %s)",
                 (title, author, total_copies, total_copies, publish_year)
             )
         conn.commit()
@@ -355,14 +233,14 @@ def books():
     q = request.args.get("q", "").strip()
     available_filter = request.args.get("available", "").strip()
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         sql = "SELECT * FROM books_new"
         params = []
 
         if q:
-            sql += " WHERE title LIKE ? OR author LIKE ?"
+            sql += " WHERE title LIKE %s OR author LIKE %s"
             like_q = f"%{q}%"
             params.extend([like_q, like_q])
 
@@ -400,10 +278,10 @@ def books():
 @admin_required
 def issue_book(book_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Fetch book details from books_new
-    cursor.execute("SELECT * FROM books_new WHERE book_id = ?", (book_id,))
+    cursor.execute("SELECT * FROM books_new WHERE book_id = %s", (book_id,))
     book = cursor.fetchone()
 
     if not book:
@@ -429,7 +307,7 @@ def issue_book(book_id):
 
         # Check if member has reached the 5 book limit
         cursor.execute(
-            "SELECT COUNT(*) as active_loans FROM transactions WHERE member_id=? AND status='issued'",
+            "SELECT COUNT(*) as active_loans FROM transactions WHERE member_id=%s AND status='issued'",
             (member_id,)
         )
         active_loans = cursor.fetchone()["active_loans"]
@@ -445,12 +323,12 @@ def issue_book(book_id):
 
         cursor.execute(
             "INSERT INTO transactions (member_id, book_id, issue_date, due_date, status) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s)",
             (member_id, book_id, issue_date, due_date, "issued")
         )
 
         cursor.execute(
-            "UPDATE books_new SET available_copies = available_copies - 1 WHERE book_id = ?",
+            "UPDATE books_new SET available_copies = available_copies - 1 WHERE book_id = %s",
             (book_id,)
         )
 
@@ -473,10 +351,10 @@ def issue_book(book_id):
 @admin_required
 def return_book(txn_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
-        cursor.execute("SELECT * FROM transactions WHERE txn_id=?", (txn_id,))
+        cursor.execute("SELECT * FROM transactions WHERE txn_id=%s", (txn_id,))
         txn = cursor.fetchone()
         if not txn or txn.get("status") != "issued":
             flash("Transaction invalid.", "warning")
@@ -503,11 +381,11 @@ def return_book(txn_id):
                     fine = round(first_15_days_fine + additional_fine, 2)
 
         cursor.execute(
-            "UPDATE transactions SET status='returned', return_date=?, fine=? WHERE txn_id=?",
+            "UPDATE transactions SET status='returned', return_date=%s, fine=%s WHERE txn_id=%s",
             (now, fine, txn_id)
         )
         cursor.execute(
-            "UPDATE books_new SET available_copies = available_copies + 1 WHERE book_id=?",
+            "UPDATE books_new SET available_copies = available_copies + 1 WHERE book_id=%s",
             (txn["book_id"],)
         )
 
@@ -527,10 +405,10 @@ def return_book(txn_id):
 @admin_required
 def delete_book(book_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Prevent deletion if there are any transactions for this book (keeps history intact)
-    cursor.execute("SELECT COUNT(*) AS cnt FROM transactions WHERE book_id=?", (book_id,))
+    cursor.execute("SELECT COUNT(*) AS cnt FROM transactions WHERE book_id=%s", (book_id,))
     count_row = cursor.fetchone()
     has_references = (count_row.get("cnt") if isinstance(count_row, dict) else 0) or 0
     if has_references > 0:
@@ -538,7 +416,7 @@ def delete_book(book_id):
         flash("Cannot delete this book because transactions exist for it.", "warning")
         return redirect(url_for("books"))
 
-    cursor.execute("DELETE FROM books_new WHERE book_id=?", (book_id,))
+    cursor.execute("DELETE FROM books_new WHERE book_id=%s", (book_id,))
     conn.commit()
     conn.close()
     flash("Book deleted.", "success")
@@ -549,7 +427,7 @@ def delete_book(book_id):
 @login_required
 def transactions():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if session['role'] == 'admin':
         cursor.execute("""
@@ -567,7 +445,7 @@ def transactions():
             ORDER BY t.issue_date DESC
         """)
     else:
-        cursor.execute("SELECT member_id FROM members WHERE name=?", (session["username"],))
+        cursor.execute("SELECT member_id FROM members WHERE name=%s", (session["username"],))
         member = cursor.fetchone()
         if not member:
             conn.close()
@@ -587,7 +465,7 @@ def transactions():
             FROM transactions t
             JOIN members m ON t.member_id = m.member_id
             JOIN books_new b ON t.book_id = b.book_id
-            WHERE t.member_id = ?
+            WHERE t.member_id = %s
             ORDER BY t.issue_date DESC
         """, (member_id,))
 
@@ -601,7 +479,7 @@ def transactions():
 @admin_required
 def export_transactions():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute("""
         SELECT t.txn_id, m.name AS member_name, b.title AS book_title,
                t.issue_date, t.due_date, t.return_date, t.status, t.fine
@@ -637,7 +515,7 @@ def export_transactions():
 @admin_required
 def members():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     
     cursor.execute("""
         SELECT m.member_id, m.name, m.email,
@@ -661,7 +539,7 @@ def members():
 @admin_required
 def admin_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         # 1. Transaction Status Distribution (Pie Chart)
@@ -686,10 +564,10 @@ def admin_dashboard():
 
         # 3. Monthly Transaction Trends (Line Chart)
         cursor.execute("""
-            SELECT strftime('%Y-%m', issue_date) as month, COUNT(*) as count
+            SELECT to_char(issue_date, 'YYYY-MM') as month, COUNT(*) as count
             FROM transactions
-            WHERE issue_date >= date('now', '-12 months')
-            GROUP BY strftime('%Y-%m', issue_date)
+            WHERE issue_date >= CURRENT_DATE - INTERVAL '12 months'
+            GROUP BY to_char(issue_date, 'YYYY-MM')
             ORDER BY month
         """)
         monthly_data = cursor.fetchall()
@@ -700,8 +578,8 @@ def admin_dashboard():
         cursor.execute("""
             SELECT 
                 CASE 
-                    WHEN t.status = 'issued' AND t.due_date < date('now') THEN 'Overdue'
-                    WHEN t.status = 'issued' AND t.due_date >= date('now') THEN 'On Time'
+                    WHEN t.status = 'issued' AND t.due_date < CURRENT_DATE THEN 'Overdue'
+                    WHEN t.status = 'issued' AND t.due_date >= CURRENT_DATE THEN 'On Time'
                     ELSE 'Returned'
                 END as status,
                 COUNT(*) as count
@@ -709,8 +587,8 @@ def admin_dashboard():
             WHERE t.status = 'issued'
             GROUP BY 
                 CASE 
-                    WHEN t.status = 'issued' AND t.due_date < date('now') THEN 'Overdue'
-                    WHEN t.status = 'issued' AND t.due_date >= date('now') THEN 'On Time'
+                    WHEN t.status = 'issued' AND t.due_date < CURRENT_DATE THEN 'Overdue'
+                    WHEN t.status = 'issued' AND t.due_date >= CURRENT_DATE THEN 'On Time'
                     ELSE 'Returned'
                 END
         """)
@@ -767,7 +645,7 @@ def admin_dashboard():
         cursor.execute("SELECT COUNT(*) as active_loans FROM transactions WHERE status = 'issued'")
         active_loans = cursor.fetchone()["active_loans"]
         
-        cursor.execute("SELECT COUNT(*) as overdue_books FROM transactions WHERE status = 'issued' AND due_date < date('now')")
+        cursor.execute("SELECT COUNT(*) as overdue_books FROM transactions WHERE status = 'issued' AND due_date < CURRENT_DATE")
         overdue_books = cursor.fetchone()["overdue_books"]
 
         return render_template(
