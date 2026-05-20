@@ -41,24 +41,44 @@ export default function BooksPage() {
   const handleViewDetails = async (book: any) => {
     setSelectedBookForDetails(book);
     setBookDescription(null);
-    if (book.isbn) {
-      setIsFetchingDescription(true);
-      try {
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${book.isbn}`);
+    setIsFetchingDescription(true);
+    let foundDescription = null;
+
+    try {
+      // 1. Try Google Books API (using ISBN or title+author)
+      const query = book.isbn ? `isbn:${book.isbn}` : `intitle:${encodeURIComponent(book.title)}+inauthor:${encodeURIComponent(book.author)}`;
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}`);
+      
+      if (res.ok) {
         const apiData = await res.json();
-        if (apiData.items && apiData.items.length > 0) {
-          setBookDescription(apiData.items[0].volumeInfo.description || "No description available for this book.");
-        } else {
-          setBookDescription("No description found for this ISBN.");
+        if (apiData.items && apiData.items.length > 0 && apiData.items[0].volumeInfo.description) {
+          foundDescription = apiData.items[0].volumeInfo.description;
+        }
+      }
+    } catch (e) {
+      console.warn("Google Books API failed or quota exceeded");
+    }
+
+    // 2. Fallback to OpenLibrary API
+    if (!foundDescription && book.isbn) {
+      try {
+        const olRes = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${book.isbn}&jscmd=details&format=json`);
+        if (olRes.ok) {
+          const olData = await olRes.json();
+          const olBook = olData[`ISBN:${book.isbn}`];
+          if (olBook?.details?.description) {
+            foundDescription = typeof olBook.details.description === "string" 
+              ? olBook.details.description 
+              : olBook.details.description.value;
+          }
         }
       } catch (e) {
-        setBookDescription("Failed to load description.");
-      } finally {
-        setIsFetchingDescription(false);
+        console.warn("OpenLibrary API failed");
       }
-    } else {
-      setBookDescription("This book does not have an ISBN recorded.");
     }
+
+    setBookDescription(foundDescription || "No description found for this book.");
+    setIsFetchingDescription(false);
   };
 
   // Query all members for the checkout dropdown
