@@ -59,17 +59,29 @@ export default function BooksPage() {
       console.warn("Google Books API failed or quota exceeded");
     }
 
-    // 2. Fallback to OpenLibrary API
+    // 2. Fallback to OpenLibrary API (Edition -> Work)
     if (!foundDescription && book.isbn) {
       try {
         const olRes = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${book.isbn}&jscmd=details&format=json`);
         if (olRes.ok) {
           const olData = await olRes.json();
           const olBook = olData[`ISBN:${book.isbn}`];
+          
           if (olBook?.details?.description) {
             foundDescription = typeof olBook.details.description === "string" 
               ? olBook.details.description 
               : olBook.details.description.value;
+          } else if (olBook?.details?.works?.[0]?.key) {
+            // Many OpenLibrary editions lack descriptions, but their parent "Work" has it
+            const workRes = await fetch(`https://openlibrary.org${olBook.details.works[0].key}.json`);
+            if (workRes.ok) {
+              const workData = await workRes.json();
+              if (workData.description) {
+                foundDescription = typeof workData.description === "string"
+                  ? workData.description
+                  : workData.description.value;
+              }
+            }
           }
         }
       } catch (e) {
