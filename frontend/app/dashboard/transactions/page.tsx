@@ -146,7 +146,7 @@ export default function TransactionsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/5">
-                {["ID", "Member", "Book", "Issued", "Expected Return", "Status", "Fine", ...(isAdmin ? ["Action"] : [])].map(h => (
+                {["ID", ...(isAdmin ? ["Member"] : []), "Book", "Issued", "Expected Return", "Status", "Fine", ...(isAdmin ? ["Action"] : [])].map(h => (
                   <th key={h} className="text-left text-slate-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">{h}</th>
                 ))}
               </tr>
@@ -155,19 +155,21 @@ export default function TransactionsPage() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-white/5">
-                    {Array.from({ length: isAdmin ? 8 : 7 }).map((_, j) => (
+                    {Array.from({ length: isAdmin ? 8 : 6 }).map((_, j) => (
                       <td key={j} className="px-6 py-4"><div className="h-4 bg-white/5 rounded animate-pulse w-3/4" /></td>
                     ))}
                   </tr>
                 ))
               ) : data?.data?.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 8 : 7} className="px-6 py-16 text-center text-slate-500">No transactions found.</td></tr>
+                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-500">No transactions found.</td></tr>
               ) : data?.data?.map((txn: any) => {
                 const { label, badge } = getStatusInfo(txn);
                 return (
                   <tr key={txn.id} className="border-b border-white/5 hover:bg-white/3 transition-colors group">
                     <td className="px-6 py-4 text-slate-500 text-sm">#{txn.id}</td>
-                    <td className="px-6 py-4 text-slate-300 text-sm">{txn.user?.name ?? `User #${txn.user_id}`}</td>
+                    {isAdmin && (
+                      <td className="px-6 py-4 text-slate-300 text-sm">{txn.user?.name ?? `User #${txn.user_id}`}</td>
+                    )}
                     <td className="px-6 py-4 text-white font-medium text-sm">{txn.book?.title ?? `Book #${txn.book_id}`}</td>
                     <td className="px-6 py-4 text-slate-400 text-sm">{txn.issue_date}</td>
                     <td className="px-6 py-4 text-sm">

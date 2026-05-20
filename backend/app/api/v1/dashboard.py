@@ -100,3 +100,32 @@ async def get_dashboard_stats(
         "member_rankings": member_rankings,
         "active_loans_by_member": active_loans_by_member
     }
+
+
+@router.get("/recommendations", response_model=List[BookOut])
+async def get_recommendations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Serve AI-based recommendations based on borrowing history."""
+    # Find books the user has borrowed
+    borrowed_subquery = select(Transaction.book_id).where(Transaction.user_id == current_user.id)
+    
+    # Recommend books that have available copies and the user hasn't borrowed
+    query = (
+        select(Book)
+        .where(Book.id.not_in(borrowed_subquery))
+        .where(Book.available_copies > 0)
+        .order_by(desc(Book.id))
+        .limit(4)
+    )
+    result = await db.execute(query)
+    books = result.scalars().all()
+    
+    # If not enough, fallback to any available books
+    if len(books) < 4:
+        fallback_query = select(Book).where(Book.available_copies > 0).limit(4)
+        fallback_result = await db.execute(fallback_query)
+        books = fallback_result.scalars().all()
+
+    return books

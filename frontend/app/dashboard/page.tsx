@@ -39,7 +39,7 @@ function MemberDashboard({ user }: { user: any }) {
 
   const { data: books } = useQuery({
     queryKey: ["member-recommended-books"],
-    queryFn: () => api.get("/books/?page=1&per_page=4").then(r => r.data),
+    queryFn: () => api.get("/dashboard/recommendations").then(r => r.data),
   });
 
   const activeTxns = txns?.data?.filter((t: any) => t.status === "issued") || [];
@@ -72,7 +72,7 @@ function MemberDashboard({ user }: { user: any }) {
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {books?.data?.map((book: any, i: number) => (
+          {books?.map((book: any, i: number) => (
             <div key={book.id} className="glass p-4 rounded-2xl border border-white/5 hover:border-indigo-500/30 transition-all group flex flex-col h-full">
               {book.cover_url ? (
                 // eslint-disable-next-line @next/next/no-img-element

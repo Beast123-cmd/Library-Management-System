@@ -60,6 +60,7 @@ class BookCreate(BaseModel):
     publish_year: Optional[int] = Field(None, ge=1000, le=2100)
     total_copies: int = Field(1, ge=1)
     cover_url: Optional[str] = None
+    description: Optional[str] = None
 
 
 class BookUpdate(BaseModel):
@@ -69,6 +70,7 @@ class BookUpdate(BaseModel):
     publish_year: Optional[int] = Field(None, ge=1000, le=2100)
     total_copies: Optional[int] = Field(None, ge=1)
     cover_url: Optional[str] = None
+    description: Optional[str] = None
 
 
 class BookOut(BaseModel):
@@ -80,6 +82,7 @@ class BookOut(BaseModel):
     total_copies: int
     available_copies: int
     cover_url: Optional[str] = None
+    description: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
