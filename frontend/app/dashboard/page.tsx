@@ -31,6 +31,108 @@ function StatCard({ icon: Icon, label, value, color, index }: any) {
   );
 }
 
+function MemberDashboard({ user }: { user: any }) {
+  const { data: txns } = useQuery({
+    queryKey: ["member-txns-summary"],
+    queryFn: () => api.get("/transactions/?page=1&per_page=10").then(r => r.data),
+  });
+
+  const { data: books } = useQuery({
+    queryKey: ["member-recommended-books"],
+    queryFn: () => api.get("/books/?page=1&per_page=4").then(r => r.data),
+  });
+
+  const activeTxns = txns?.data?.filter((t: any) => t.status === "issued") || [];
+  const overdueTxns = activeTxns.filter((t: any) => new Date(t.expected_return_date) < new Date());
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-3xl font-bold text-white">
+          Welcome back, <span className="gradient-text">{user?.name?.split(" ")[0]}!</span>
+        </h1>
+        <p className="text-slate-400 mt-1">Ready to dive into your next great read?</p>
+      </motion.div>
+
+      {/* Quick Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <StatCard icon={BookOpen} label="Active Loans" value={activeTxns.length} color="bg-indigo-600" index={0} />
+        <StatCard icon={AlertCircle} label="Overdue Books" value={overdueTxns.length} color={overdueTxns.length > 0 ? "bg-red-600" : "bg-emerald-600"} index={1} />
+      </div>
+
+      {/* Recommended Books */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Bookmark className="text-indigo-400" size={20} />
+            Recommended For You
+          </h2>
+          <a href="/dashboard/books" className="text-sm text-indigo-400 hover:text-indigo-300 font-medium">View Catalog &rarr;</a>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {books?.data?.map((book: any, i: number) => (
+            <div key={book.id} className="glass p-4 rounded-2xl border border-white/5 hover:border-indigo-500/30 transition-all group flex flex-col h-full">
+              {book.cover_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={book.cover_url} alt={book.title} className="w-full h-48 object-cover rounded-xl shadow-lg border border-white/10 group-hover:scale-[1.02] transition-transform" />
+              ) : (
+                <div className="w-full h-48 bg-slate-800/50 rounded-xl flex items-center justify-center border border-white/5">
+                  <BookOpen size={32} className="text-slate-500" />
+                </div>
+              )}
+              <div className="mt-4 flex-1 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-white font-bold text-sm leading-tight line-clamp-2">{book.title}</h3>
+                  <p className="text-slate-400 text-xs mt-1">{book.author}</p>
+                </div>
+                <a href="/dashboard/books" className="mt-4 block w-full text-center py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-semibold hover:bg-indigo-600/40 transition-colors">
+                  View Details
+                </a>
+              </div>
+            </div>
+          ))}
+          {!books && Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="glass p-4 rounded-2xl h-72 animate-pulse border border-white/5" />
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Recent Activity */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-white font-semibold flex items-center gap-2">
+            <Clock size={18} className="text-indigo-400" />
+            Your Recent Loans
+          </h2>
+          <a href="/dashboard/transactions" className="text-sm text-indigo-400 hover:text-indigo-300 font-medium">View All &rarr;</a>
+        </div>
+        <div className="space-y-3">
+          {txns?.data?.slice(0, 3).map((txn: any) => (
+             <div key={txn.id} className="flex justify-between items-center bg-white/3 hover:bg-white/5 transition-colors p-3.5 rounded-xl border border-white/5">
+                <div>
+                  <p className="text-white text-sm font-medium">
+                    <span className="text-indigo-300 font-semibold">{txn.book?.title}</span>
+                  </p>
+                  <p className="text-slate-400 text-xs mt-1">
+                    Status: <span className={`capitalize ${txn.status === "issued" ? "text-amber-400" : "text-emerald-400"}`}>{txn.status}</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-slate-400 text-xs">Due: {txn.expected_return_date}</p>
+                </div>
+             </div>
+          ))}
+          {txns?.data?.length === 0 && (
+             <p className="text-slate-500 text-sm py-4 text-center">You haven't borrowed any books yet.</p>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -42,7 +144,7 @@ export default function DashboardPage() {
   });
 
   if (user && !isAdmin) {
-    return <TransactionsPage />;
+    return <MemberDashboard user={user} />;
   }
 
   const kpis = stats?.kpis;
