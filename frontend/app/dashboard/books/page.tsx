@@ -34,6 +34,33 @@ export default function BooksPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [selectedBookForDetails, setSelectedBookForDetails] = useState<any>(null);
+  const [bookDescription, setBookDescription] = useState<string | null>(null);
+  const [isFetchingDescription, setIsFetchingDescription] = useState(false);
+
+  const handleViewDetails = async (book: any) => {
+    setSelectedBookForDetails(book);
+    setBookDescription(null);
+    if (book.isbn) {
+      setIsFetchingDescription(true);
+      try {
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${book.isbn}`);
+        const apiData = await res.json();
+        if (apiData.items && apiData.items.length > 0) {
+          setBookDescription(apiData.items[0].volumeInfo.description || "No description available for this book.");
+        } else {
+          setBookDescription("No description found for this ISBN.");
+        }
+      } catch (e) {
+        setBookDescription("Failed to load description.");
+      } finally {
+        setIsFetchingDescription(false);
+      }
+    } else {
+      setBookDescription("This book does not have an ISBN recorded.");
+    }
+  };
+
   // Query all members for the checkout dropdown
   const { data: membersData } = useQuery({
     queryKey: ["all-members-dropdown"],
@@ -143,15 +170,7 @@ export default function BooksPage() {
               ) : data?.data?.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">No books found.</td></tr>
               ) : data?.data?.map((book: any) => {
-                const handleBorrow = async () => {
-                  try {
-                    await api.post(`/transactions/borrow/${book.id}`);
-                    toast.success(`"${book.title}" borrowed successfully!`);
-                    refetch();
-                  } catch (err: any) {
-                    toast.error(err?.response?.data?.detail || "Borrow failed.");
-                  }
-                };
+
 
                 return (
                   <motion.tr key={book.id}
@@ -206,11 +225,10 @@ export default function BooksPage() {
                         </div>
                       ) : (
                         <button
-                          disabled={book.available_copies < 1}
-                          onClick={handleBorrow}
-                          className="px-3 py-1.5 bg-indigo-600 disabled:bg-slate-800 text-white rounded-lg text-xs font-semibold hover:bg-indigo-500 disabled:text-slate-500 disabled:cursor-not-allowed transition-all"
+                          onClick={() => handleViewDetails(book)}
+                          className="px-3 py-1.5 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-500/30 transition-all"
                         >
-                          {book.available_copies > 0 ? "Borrow" : "Out of Stock"}
+                          View Details
                         </button>
                       )}
                     </td>
@@ -333,6 +351,67 @@ export default function BooksPage() {
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* View Details Modal for Members */}
+      {selectedBookForDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+          >
+            <div className="p-6">
+              <div className="flex gap-5">
+                {selectedBookForDetails.cover_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={selectedBookForDetails.cover_url} alt={selectedBookForDetails.title} className="w-28 h-40 object-cover rounded shadow-md border border-white/10" />
+                ) : (
+                  <div className="w-28 h-40 bg-slate-800/50 border border-white/5 flex items-center justify-center rounded shadow-md">
+                    <BookOpen size={28} className="text-slate-500" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-white leading-tight">{selectedBookForDetails.title}</h3>
+                  <p className="text-indigo-400 font-medium text-sm mt-1">{selectedBookForDetails.author}</p>
+                  <div className="flex flex-col gap-2 mt-3">
+                    <span className="inline-flex w-fit px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-slate-300">
+                      Published: {selectedBookForDetails.publish_year || "Unknown"}
+                    </span>
+                    <span className="inline-flex w-fit px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-slate-300">
+                      ISBN: {selectedBookForDetails.isbn || "N/A"}
+                    </span>
+                    <span className={`inline-flex w-fit px-2 py-1 border rounded text-xs font-semibold ${selectedBookForDetails.available_copies > 0 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+                      {selectedBookForDetails.available_copies > 0 ? `${selectedBookForDetails.available_copies} Copies Available` : "Out of Stock"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-6 space-y-2">
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">About this Book</h4>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-slate-300 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar">
+                  {isFetchingDescription ? (
+                    <div className="flex items-center gap-2 text-indigo-400 justify-center py-4">
+                      <Loader2 className="animate-spin" size={16} /> Fetching description...
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-line">{bookDescription}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-white/10 bg-slate-950/50 flex justify-end">
+              <button
+                onClick={() => setSelectedBookForDetails(null)}
+                className="px-5 py-2.5 text-sm font-semibold text-white bg-white/10 hover:bg-white/20 rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

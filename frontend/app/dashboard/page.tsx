@@ -4,6 +4,7 @@ import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import TransactionsPage from "./transactions/page";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -37,7 +38,12 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: () => api.get("/dashboard/stats").then(r => r.data),
+    enabled: isAdmin,
   });
+
+  if (user && !isAdmin) {
+    return <TransactionsPage />;
+  }
 
   const kpis = stats?.kpis;
 
