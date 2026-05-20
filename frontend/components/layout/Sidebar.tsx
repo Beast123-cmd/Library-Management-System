@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, BookOpen, ArrowLeftRight,
-  Users, BarChart3, LogOut, BookMarked, ChevronLeft, ChevronRight, Sun, Moon
+  Users, BarChart3, LogOut, BookMarked, ChevronLeft, ChevronRight, Sun, Moon, Bookmark
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -15,6 +15,7 @@ const navItems = [
   { href: "/dashboard",              label: "Dashboard",     icon: LayoutDashboard },
   { href: "/dashboard/books",        label: "Books",         icon: BookOpen },
   { href: "/dashboard/transactions", label: "Transactions",  icon: ArrowLeftRight },
+  { href: "/dashboard/holds",        label: "Holds & Pull List", icon: Bookmark, adminOnly: true },
   { href: "/dashboard/members",      label: "Members",       icon: Users, adminOnly: true },
   { href: "/dashboard/analytics",    label: "Analytics",     icon: BarChart3, adminOnly: true },
 ];

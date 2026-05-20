@@ -117,6 +117,21 @@ class TransactionOut(BaseModel):
 
 
 # ==============================================================================
+# HOLD QUEUE SCHEMAS
+# ==============================================================================
+class HoldQueueOut(BaseModel):
+    id: int
+    user_id: int
+    book_id: int
+    request_date: datetime
+    expiration_date: Optional[datetime] = None
+    status: str
+    user: Optional[UserOut] = None
+    book: Optional[BookOut] = None
+
+    model_config = {"from_attributes": True}
+
+# ==============================================================================
 # PAGINATION SCHEMA
 # ==============================================================================
 class PaginatedResponse(BaseModel):

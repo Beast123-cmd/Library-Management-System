@@ -14,11 +14,13 @@ class UserRole(str, enum.Enum):
 
 
 class TransactionStatus(str, enum.Enum):
+    requested = "requested"
+    on_hold_shelf = "on_hold_shelf"
+    in_transit = "in_transit"
     issued = "issued"
     returned = "returned"
     overdue = "overdue"
-
-
+    lost = "lost"
 # ==============================================================================
 # USER MODEL
 # ==============================================================================
@@ -98,3 +100,28 @@ class AuditLog(Base):
 
     # Relationships
     admin = relationship("User", back_populates="audit_logs")
+
+
+class HoldQueueStatus(str, enum.Enum):
+    active = "active"
+    suspended = "suspended"
+    fulfilled = "fulfilled"
+    cancelled = "cancelled"
+
+
+# ==============================================================================
+# HOLD QUEUE MODEL
+# ==============================================================================
+class HoldQueue(Base):
+    __tablename__ = "hold_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    request_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expiration_date = Column(DateTime(timezone=True), nullable=True) # E.g., hold shelf expires after 7 days
+    status = Column(SAEnum(HoldQueueStatus, native_enum=False), default=HoldQueueStatus.active, index=True)
+    
+    # Relationships
+    user = relationship("User")
+    book = relationship("Book")

@@ -42,8 +42,40 @@ function MemberDashboard({ user }: { user: any }) {
     queryFn: () => api.get("/dashboard/recommendations").then(r => r.data),
   });
 
+  const { data: holds, refetch: refetchHolds } = useQuery({
+    queryKey: ["member-holds"],
+    queryFn: () => api.get("/holds/my-holds").then(r => r.data),
+  });
+
   const activeTxns = txns?.data?.filter((t: any) => t.status === "issued") || [];
   const overdueTxns = activeTxns.filter((t: any) => new Date(t.expected_return_date) < new Date());
+
+  const handleCancelHold = async (holdId: number) => {
+    try {
+      await api.post(`/holds/${holdId}/cancel`);
+      refetchHolds();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSuspendHold = async (holdId: number) => {
+    try {
+      await api.post(`/holds/${holdId}/suspend`);
+      refetchHolds();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleActivateHold = async (holdId: number) => {
+    try {
+      await api.post(`/holds/${holdId}/activate`);
+      refetchHolds();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -60,6 +92,46 @@ function MemberDashboard({ user }: { user: any }) {
         <StatCard icon={BookOpen} label="Active Loans" value={activeTxns.length} color="bg-indigo-600" index={0} />
         <StatCard icon={AlertCircle} label="Overdue Books" value={overdueTxns.length} color={overdueTxns.length > 0 ? "bg-red-600" : "bg-emerald-600"} index={1} />
       </div>
+
+      {/* Your Holds Section */}
+      {holds && holds.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white font-semibold flex items-center gap-2">
+              <Bookmark size={18} className="text-indigo-400" />
+              Your Hold Queue
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {holds.map((hold: any) => (
+               <div key={hold.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white/3 hover:bg-white/5 transition-colors p-3.5 rounded-xl border border-white/5 gap-3 sm:gap-0">
+                  <div>
+                    <p className="text-white text-sm font-medium">
+                      <span className="text-indigo-300 font-semibold">{hold.book?.title}</span>
+                    </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      Requested: {new Date(hold.request_date).toLocaleDateString()} | Status: <span className={`capitalize ${hold.status === 'suspended' ? 'text-amber-400' : 'text-emerald-400'}`}>{hold.status}</span>
+                    </p>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    {hold.status === 'active' ? (
+                      <button onClick={() => handleSuspendHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 rounded-lg transition-colors border border-amber-400/20">
+                        Suspend
+                      </button>
+                    ) : (
+                      <button onClick={() => handleActivateHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 rounded-lg transition-colors border border-emerald-400/20">
+                        Activate
+                      </button>
+                    )}
+                    <button onClick={() => handleCancelHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-red-400 bg-red-400/10 hover:bg-red-400/20 rounded-lg transition-colors border border-red-400/20">
+                      Cancel
+                    </button>
+                  </div>
+               </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Recommended Books */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-4">

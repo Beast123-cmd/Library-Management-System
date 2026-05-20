@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from datetime import date, timedelta
 from typing import Optional
 from app.db.database import get_db
-from app.models.models import Transaction, Book, User, TransactionStatus
+from app.models.models import Transaction, Book, User, TransactionStatus, HoldQueue, HoldQueueStatus
 from app.schemas.schemas import TransactionCreate, TransactionOut, PaginatedResponse, ReturnRequest
 from app.core.dependencies import get_current_user, get_current_admin
 
@@ -79,29 +79,49 @@ async def issue_book(
     _: User = Depends(get_current_admin)
 ):
     """Issue a book to a member. Admin only."""
-    # Verify book exists and has available copies
+    # Verify book exists
     book_result = await db.execute(select(Book).where(Book.id == payload.book_id))
     book = book_result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found.")
-    if book.available_copies < 1:
-        raise HTTPException(status_code=400, detail="No copies of this book are currently available.")
 
     # Verify member exists
     user_result = await db.execute(select(User).where(User.id == payload.user_id))
     if not user_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Member not found.")
 
-    txn = Transaction(
-        user_id=payload.user_id,
-        book_id=payload.book_id,
-        issue_date=date.today(),
-        expected_return_date=payload.expected_return_date,
-        status=TransactionStatus.issued
+    # Check if there is an existing on_hold_shelf transaction for this user & book
+    hold_txn_result = await db.execute(
+        select(Transaction)
+        .where(
+            Transaction.user_id == payload.user_id,
+            Transaction.book_id == payload.book_id,
+            Transaction.status == TransactionStatus.on_hold_shelf
+        )
     )
-    book.available_copies -= 1
+    hold_txn = hold_txn_result.scalar_one_or_none()
 
-    db.add(txn)
+    if hold_txn:
+        # Convert hold to actual issue
+        hold_txn.status = TransactionStatus.issued
+        hold_txn.issue_date = date.today()
+        hold_txn.expected_return_date = payload.expected_return_date
+        txn = hold_txn
+    else:
+        # Standard issue without hold
+        if book.available_copies < 1:
+            raise HTTPException(status_code=400, detail="No copies of this book are currently available.")
+        
+        txn = Transaction(
+            user_id=payload.user_id,
+            book_id=payload.book_id,
+            issue_date=date.today(),
+            expected_return_date=payload.expected_return_date,
+            status=TransactionStatus.issued
+        )
+        book.available_copies -= 1
+        db.add(txn)
+
     await db.commit()
     
     # Reload with relationships loaded for serialization
@@ -142,11 +162,33 @@ async def return_book(
     txn.fine_amount = fine
     txn.status = TransactionStatus.returned
 
-    # Restore book availability
+    # Handle book availability and hold trapping
     book_result = await db.execute(select(Book).where(Book.id == txn.book_id))
     book = book_result.scalar_one_or_none()
+    
     if book:
-        book.available_copies += 1
+        # Check for active holds
+        hold_result = await db.execute(
+            select(HoldQueue)
+            .where(HoldQueue.book_id == book.id)
+            .where(HoldQueue.status == HoldQueueStatus.active)
+            .order_by(HoldQueue.request_date.asc())
+            .limit(1)
+        )
+        next_hold = hold_result.scalar_one_or_none()
+        
+        if next_hold:
+            # Trap the book for the next hold
+            new_txn = Transaction(
+                book_id=book.id,
+                user_id=next_hold.user_id,
+                status=TransactionStatus.on_hold_shelf,
+                issue_date=today,
+                expected_return_date=today + timedelta(days=3) # Deadline to pick up
+            )
+            db.add(new_txn)
+        else:
+            book.available_copies += 1
 
     await db.commit()
     await db.refresh(txn)
