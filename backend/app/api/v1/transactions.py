@@ -114,53 +114,6 @@ async def issue_book(
     return result.scalar_one()
 
 
-@router.post("/borrow/{book_id}", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
-async def borrow_book(
-    book_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Borrow a book for the current logged-in user."""
-    # Verify book exists and has available copies
-    book_result = await db.execute(select(Book).where(Book.id == book_id))
-    book = book_result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found.")
-    if book.available_copies < 1:
-        raise HTTPException(status_code=400, detail="No copies of this book are currently available.")
-
-    # Check if user already has an active issue for this book
-    active_txn = await db.execute(
-        select(Transaction).where(
-            Transaction.user_id == current_user.id,
-            Transaction.book_id == book_id,
-            Transaction.status == TransactionStatus.issued
-        )
-    )
-    if active_txn.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="You have already borrowed this book.")
-
-    txn = Transaction(
-        user_id=current_user.id,
-        book_id=book_id,
-        issue_date=date.today(),
-        expected_return_date=date.today() + timedelta(days=DEFAULT_LOAN_DAYS),
-        status=TransactionStatus.issued
-    )
-    book.available_copies -= 1
-
-    db.add(txn)
-    await db.commit()
-    
-    # Reload with relationships loaded for serialization
-    stmt = (
-        select(Transaction)
-        .options(selectinload(Transaction.user), selectinload(Transaction.book))
-        .where(Transaction.id == txn.id)
-    )
-    result = await db.execute(stmt)
-    return result.scalar_one()
-
 
 
 @router.post("/{txn_id}/return", response_model=TransactionOut)

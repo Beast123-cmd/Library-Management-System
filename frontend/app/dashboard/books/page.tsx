@@ -444,28 +444,12 @@ export default function BooksPage() {
               </div>
             </div>
             
-            <div className="p-4 border-t border-white/10 bg-slate-950/50 flex justify-end gap-3">
+            <div className="p-4 border-t border-white/10 bg-slate-950/50 flex justify-end">
               <button
                 onClick={() => setSelectedBookForDetails(null)}
                 className="px-5 py-2.5 text-sm font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
               >
                 Close
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    await api.post(`/transactions/borrow/${selectedBookForDetails.id}`);
-                    toast.success("Successfully borrowed the book!");
-                    setSelectedBookForDetails(null);
-                    refetch();
-                  } catch (e: any) {
-                    toast.error(e?.response?.data?.detail || "Failed to borrow book.");
-                  }
-                }}
-                disabled={selectedBookForDetails.available_copies < 1}
-                className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-600 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
-              >
-                {selectedBookForDetails.available_copies < 1 ? "Out of Stock" : "Borrow Book"}
               </button>
             </div>
           </motion.div>
