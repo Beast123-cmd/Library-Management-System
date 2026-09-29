@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
-from datetime import datetime, timedelta, date
+from datetime import datetime, date, timezone
 
 from app.db.database import get_db
-from app.api.deps import get_current_user, get_admin_user
+from app.core.dependencies import get_current_user, get_current_admin
+from app.core.holds import HOLD_DURATION, release_expired_holds
 from app.models.models import User, Book, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
 from app.schemas.schemas import HoldQueueOut
 
@@ -15,9 +16,11 @@ router = APIRouter(prefix="/holds", tags=["Holds"])
 @router.get("/all", response_model=List[HoldQueueOut])
 async def get_all_holds(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_admin_user)
+    _: User = Depends(get_current_admin)
 ):
     """Get all holds across the system (Admin only) - Pull List."""
+    await release_expired_holds(db)
+    await db.commit()
     stmt = (
         select(HoldQueue)
         .options(selectinload(HoldQueue.book), selectinload(HoldQueue.user))
@@ -35,55 +38,45 @@ async def place_hold(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Place a hold on a book."""
-    book_result = await db.execute(select(Book).where(Book.id == book_id))
+    """Reserve one available copy for collection within 12 hours."""
+    await release_expired_holds(db)
+    book_result = await db.execute(select(Book).where(Book.id == book_id).with_for_update())
     book = book_result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found.")
+
+    if book.available_copies < 1:
+        raise HTTPException(status_code=400, detail="No copies are currently available to hold.")
 
     # Check if they already have an active hold
     existing_hold_result = await db.execute(
         select(HoldQueue).where(
             HoldQueue.user_id == current_user.id,
             HoldQueue.book_id == book_id,
-            HoldQueue.status == HoldQueueStatus.active
+            HoldQueue.status.in_([HoldQueueStatus.active, HoldQueueStatus.suspended])
         )
     )
     if existing_hold_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="You already have an active hold on this book.")
 
-    # If copies are available, book directly goes to on_hold_shelf (trapped for this user)
-    # If not, it joins the waitlist.
-    if book.available_copies > 0:
-        # We can issue it immediately to the hold shelf
-        txn = Transaction(
-            user_id=current_user.id,
-            book_id=book_id,
-            issue_date=date.today(),
-            expected_return_date=date.today() + timedelta(days=7), # hold expires in 7 days
-            status=TransactionStatus.on_hold_shelf
-        )
-        book.available_copies -= 1
-        db.add(txn)
-        await db.commit()
-        # Create a fulfilled hold record for history tracking
-        new_hold = HoldQueue(
-            user_id=current_user.id,
-            book_id=book_id,
-            status=HoldQueueStatus.fulfilled
-        )
-        db.add(new_hold)
-        await db.commit()
-        await db.refresh(new_hold)
-    else:
-        new_hold = HoldQueue(
-            user_id=current_user.id,
-            book_id=book_id,
-            status=HoldQueueStatus.active
-        )
-        db.add(new_hold)
-        await db.commit()
-        await db.refresh(new_hold)
+    expires_at = datetime.now(timezone.utc) + HOLD_DURATION
+    new_hold = HoldQueue(
+        user_id=current_user.id,
+        book_id=book_id,
+        expiration_date=expires_at,
+        status=HoldQueueStatus.active,
+    )
+    db.add(new_hold)
+    db.add(Transaction(
+        user_id=current_user.id,
+        book_id=book_id,
+        issue_date=date.today(),
+        expected_return_date=expires_at.date(),
+        status=TransactionStatus.on_hold_shelf,
+    ))
+    book.available_copies -= 1
+    await db.commit()
+    await db.refresh(new_hold)
 
     stmt = select(HoldQueue).options(selectinload(HoldQueue.book)).where(HoldQueue.id == new_hold.id)
     result = await db.execute(stmt)
@@ -95,6 +88,8 @@ async def get_my_holds(
     current_user: User = Depends(get_current_user)
 ):
     """Get active holds for the current user."""
+    await release_expired_holds(db)
+    await db.commit()
     stmt = (
         select(HoldQueue)
         .options(selectinload(HoldQueue.book))
@@ -114,6 +109,7 @@ async def suspend_hold(
     current_user: User = Depends(get_current_user)
 ):
     """Suspend an active hold."""
+    await release_expired_holds(db)
     result = await db.execute(select(HoldQueue).where(HoldQueue.id == hold_id, HoldQueue.user_id == current_user.id))
     hold = result.scalar_one_or_none()
     if not hold:
@@ -136,6 +132,7 @@ async def activate_hold(
     current_user: User = Depends(get_current_user)
 ):
     """Reactivate a suspended hold."""
+    await release_expired_holds(db)
     result = await db.execute(select(HoldQueue).where(HoldQueue.id == hold_id, HoldQueue.user_id == current_user.id))
     hold = result.scalar_one_or_none()
     if not hold:
@@ -158,12 +155,30 @@ async def cancel_hold(
     current_user: User = Depends(get_current_user)
 ):
     """Cancel a hold."""
+    await release_expired_holds(db)
     result = await db.execute(select(HoldQueue).where(HoldQueue.id == hold_id, HoldQueue.user_id == current_user.id))
     hold = result.scalar_one_or_none()
     if not hold:
         raise HTTPException(status_code=404, detail="Hold not found.")
     
+    if hold.status not in [HoldQueueStatus.active, HoldQueueStatus.suspended]:
+        raise HTTPException(status_code=400, detail="This hold can no longer be cancelled.")
+
     hold.status = HoldQueueStatus.cancelled
+    book = await db.get(Book, hold.book_id)
+    if book:
+        book.available_copies += 1
+    hold_transaction = (
+        await db.execute(
+            select(Transaction).where(
+                Transaction.user_id == hold.user_id,
+                Transaction.book_id == hold.book_id,
+                Transaction.status == TransactionStatus.on_hold_shelf,
+            )
+        )
+    ).scalar_one_or_none()
+    if hold_transaction:
+        await db.delete(hold_transaction)
     await db.commit()
     
     stmt = select(HoldQueue).options(selectinload(HoldQueue.book)).where(HoldQueue.id == hold_id)

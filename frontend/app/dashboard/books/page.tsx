@@ -37,6 +37,7 @@ export default function BooksPage() {
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<any>(null);
   const [bookDescription, setBookDescription] = useState<string | null>(null);
   const [isFetchingDescription, setIsFetchingDescription] = useState(false);
+  const [isPlacingHold, setIsPlacingHold] = useState(false);
 
   const handleViewDetails = async (book: any) => {
     setSelectedBookForDetails(book);
@@ -454,18 +455,22 @@ export default function BooksPage() {
               {!isAdmin && (
                 <button
                   onClick={async () => {
+                    setIsPlacingHold(true);
                     try {
                       await api.post(`/holds/${selectedBookForDetails.id}`);
-                      toast.success("Hold placed successfully!");
+                      toast.success("Book reserved for 12 hours. Please collect it from the library.");
                       setSelectedBookForDetails(null);
                       refetch();
                     } catch (e: any) {
                       toast.error(e?.response?.data?.detail || "Failed to place hold.");
+                    } finally {
+                      setIsPlacingHold(false);
                     }
                   }}
-                  className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                  disabled={selectedBookForDetails.available_copies < 1 || isPlacingHold}
+                  className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Place Hold
+                  {isPlacingHold ? "Placing Hold..." : "Place Hold (12 hours)"}
                 </button>
               )}
             </div>

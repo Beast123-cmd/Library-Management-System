@@ -110,7 +110,7 @@ function MemberDashboard({ user }: { user: any }) {
                       <span className="text-indigo-300 font-semibold">{hold.book?.title}</span>
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
-                      Requested: {new Date(hold.request_date).toLocaleDateString()} | Status: <span className={`capitalize ${hold.status === 'suspended' ? 'text-amber-400' : 'text-emerald-400'}`}>{hold.status}</span>
+                      Collect by: {hold.expiration_date ? new Date(hold.expiration_date).toLocaleString() : "—"} | Status: <span className={`capitalize ${hold.status === 'suspended' ? 'text-amber-400' : 'text-emerald-400'}`}>{hold.status}</span>
                     </p>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">

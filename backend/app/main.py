@@ -1,14 +1,41 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, books, transactions, users, dashboard, analytics, holds
 from app.core.config import settings
+from app.core.holds import release_expired_holds
+from app.db.database import AsyncSessionLocal
+
+
+async def expire_holds_periodically():
+    while True:
+        async with AsyncSessionLocal() as db:
+            await release_expired_holds(db)
+            await db.commit()
+        await asyncio.sleep(60)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    task = asyncio.create_task(expire_holds_periodically())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="High-performance async backend for the SaaS Library Management System.",
     version="1.0.0",
     docs_url="/api/docs",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 # ---- CORS Middleware ----

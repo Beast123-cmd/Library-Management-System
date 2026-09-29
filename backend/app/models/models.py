@@ -107,6 +107,7 @@ class HoldQueueStatus(str, enum.Enum):
     suspended = "suspended"
     fulfilled = "fulfilled"
     cancelled = "cancelled"
+    expired = "expired"
 
 
 # ==============================================================================

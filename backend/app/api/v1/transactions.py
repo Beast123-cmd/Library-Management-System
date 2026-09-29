@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.models.models import Transaction, Book, User, TransactionStatus, HoldQueue, HoldQueueStatus
 from app.schemas.schemas import TransactionCreate, TransactionOut, PaginatedResponse, ReturnRequest
 from app.core.dependencies import get_current_user, get_current_admin
+from app.core.holds import release_expired_holds
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -79,6 +80,7 @@ async def issue_book(
     _: User = Depends(get_current_admin)
 ):
     """Issue a book to a member. Admin only."""
+    await release_expired_holds(db)
     # Verify book exists
     book_result = await db.execute(select(Book).where(Book.id == payload.book_id))
     book = book_result.scalar_one_or_none()
@@ -107,6 +109,16 @@ async def issue_book(
         hold_txn.issue_date = date.today()
         hold_txn.expected_return_date = payload.expected_return_date
         txn = hold_txn
+        hold_result = await db.execute(
+            select(HoldQueue).where(
+                HoldQueue.user_id == payload.user_id,
+                HoldQueue.book_id == payload.book_id,
+                HoldQueue.status.in_([HoldQueueStatus.active, HoldQueueStatus.suspended]),
+            )
+        )
+        hold = hold_result.scalar_one_or_none()
+        if hold:
+            hold.status = HoldQueueStatus.fulfilled
     else:
         # Standard issue without hold
         if book.available_copies < 1:
