@@ -1,17 +1,19 @@
 "use client";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import axios from "axios";
 import { Bookmark, Search, User as UserIcon, Book as BookIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import toast from "react-hot-toast";
 
 export default function HoldsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [searchTerm, setSearchTerm] = useState("");
+  const [collectingId, setCollectingId] = useState<number | null>(null);
 
-  const { data: holds, isLoading } = useQuery({
+  const { data: holds, isLoading, refetch } = useQuery({
     queryKey: ["all-holds"],
     queryFn: () => api.get("/holds/all").then(r => r.data),
     enabled: isAdmin,
@@ -30,6 +32,26 @@ export default function HoldsPage() {
     h.user?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     h.user?.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleCollect = async (hold: any) => {
+    setCollectingId(hold.id);
+    const due = new Date();
+    due.setDate(due.getDate() + 7);
+    const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+    try {
+      await api.post("/transactions/issue", {
+        user_id: hold.user_id,
+        book_id: hold.book_id,
+        expected_return_date: dueDate,
+      });
+      toast.success("Book collected and issued for 7 days.");
+      refetch();
+    } catch (error: unknown) {
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.detail || "Could not issue this hold." : "Could not issue this hold.");
+    } finally {
+      setCollectingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -65,8 +87,9 @@ export default function HoldsPage() {
               <tr className="border-b border-white/10 bg-white/5 text-slate-300 text-sm font-semibold">
                 <th className="p-4">Book</th>
                 <th className="p-4">Member</th>
-                <th className="p-4">Request Date</th>
+                <th className="p-4">Pickup Deadline</th>
                 <th className="p-4">Status</th>
+                <th className="p-4">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -77,11 +100,12 @@ export default function HoldsPage() {
                     <td className="p-4"><div className="h-4 bg-white/5 rounded w-1/2"></div></td>
                     <td className="p-4"><div className="h-4 bg-white/5 rounded w-24"></div></td>
                     <td className="p-4"><div className="h-4 bg-white/5 rounded w-16"></div></td>
+                    <td className="p-4"><div className="h-4 bg-white/5 rounded w-24"></div></td>
                   </tr>
                 ))
               ) : filteredHolds?.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400">
+                  <td colSpan={5} className="p-8 text-center text-slate-400">
                     No holds found.
                   </td>
                 </tr>
@@ -112,10 +136,10 @@ export default function HoldsPage() {
                     </td>
                     <td className="p-4">
                       <p className="text-slate-300 text-sm">
-                        {new Date(hold.request_date).toLocaleDateString()}
+                        {hold.expiration_date ? new Date(hold.expiration_date).toLocaleDateString() : "—"}
                       </p>
                       <p className="text-slate-500 text-xs">
-                        {new Date(hold.request_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        {hold.expiration_date ? new Date(hold.expiration_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
                       </p>
                     </td>
                     <td className="p-4">
@@ -124,8 +148,14 @@ export default function HoldsPage() {
                         hold.status === 'suspended' ? 'bg-slate-500/10 text-slate-400 border-slate-500/20' :
                         'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                       }`}>
-                        {hold.status}
+                        {hold.status === "active" ? "Ready for pickup" : hold.status}
                       </span>
+                    </td>
+                    <td className="p-4">
+                      <button onClick={() => handleCollect(hold)} disabled={collectingId !== null}
+                        className="px-3 py-2 rounded-lg bg-indigo-600/20 text-indigo-300 text-xs font-semibold hover:bg-indigo-600/40 disabled:opacity-50">
+                        {collectingId === hold.id ? "Issuing…" : "Mark Collected · 7-day loan"}
+                      </button>
                     </td>
                   </tr>
                 ))

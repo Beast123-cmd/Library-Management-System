@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 # ==============================================================================
@@ -99,6 +99,14 @@ class TransactionCreate(BaseModel):
 
 class ReturnRequest(BaseModel):
     waive_fine: bool = False
+    waiver_reason: Optional[str] = Field(None, max_length=500)
+
+    @model_validator(mode="after")
+    def require_waiver_reason(self):
+        if self.waive_fine and not (self.waiver_reason or "").strip():
+            raise ValueError("A reason is required when waiving a fine.")
+        self.waiver_reason = self.waiver_reason.strip() if self.waive_fine else None
+        return self
 
 
 class TransactionOut(BaseModel):
@@ -110,10 +118,18 @@ class TransactionOut(BaseModel):
     actual_return_date: Optional[date] = None
     status: str
     fine_amount: float
+    renewal_count: int = 0
     user: Optional[UserOut] = None
     book: Optional[BookOut] = None
 
     model_config = {"from_attributes": True}
+
+
+class ReturnReceipt(TransactionOut):
+    overdue_days: int
+    assessed_fine: float
+    waived: bool
+    waiver_reason: Optional[str] = None
 
 
 # ==============================================================================

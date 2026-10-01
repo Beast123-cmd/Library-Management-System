@@ -1,10 +1,12 @@
 "use client";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle, Clock, TrendingUp, Bookmark } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import TransactionsPage from "./transactions/page";
+import toast from "react-hot-toast";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -32,6 +34,7 @@ function StatCard({ icon: Icon, label, value, color, index }: any) {
 }
 
 function MemberDashboard({ user }: { user: any }) {
+  const queryClient = useQueryClient();
   const { data: txns } = useQuery({
     queryKey: ["member-txns-summary"],
     queryFn: () => api.get("/transactions/?page=1&per_page=10").then(r => r.data),
@@ -54,26 +57,10 @@ function MemberDashboard({ user }: { user: any }) {
     try {
       await api.post(`/holds/${holdId}/cancel`);
       refetchHolds();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleSuspendHold = async (holdId: number) => {
-    try {
-      await api.post(`/holds/${holdId}/suspend`);
-      refetchHolds();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleActivateHold = async (holdId: number) => {
-    try {
-      await api.post(`/holds/${holdId}/activate`);
-      refetchHolds();
-    } catch (e) {
-      console.error(e);
+      queryClient.invalidateQueries({ queryKey: ["books"] });
+      toast.success("Reservation cancelled.");
+    } catch {
+      toast.error("Could not cancel the reservation.");
     }
   };
 
@@ -94,15 +81,16 @@ function MemberDashboard({ user }: { user: any }) {
       </div>
 
       {/* Your Holds Section */}
-      {holds && holds.length > 0 && (
+      {holds && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white font-semibold flex items-center gap-2">
               <Bookmark size={18} className="text-indigo-400" />
-              Your Hold Queue
+              Your Reservation
             </h2>
+            <span className="text-xs text-slate-400">One active hold at a time</span>
           </div>
-          <div className="space-y-3">
+          {holds.length > 0 ? <div className="space-y-3">
             {holds.map((hold: any) => (
                <div key={hold.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white/3 hover:bg-white/5 transition-colors p-3.5 rounded-xl border border-white/5 gap-3 sm:gap-0">
                   <div>
@@ -110,26 +98,21 @@ function MemberDashboard({ user }: { user: any }) {
                       <span className="text-indigo-300 font-semibold">{hold.book?.title}</span>
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
-                      Collect by: {hold.expiration_date ? new Date(hold.expiration_date).toLocaleString() : "—"} | Status: <span className={`capitalize ${hold.status === 'suspended' ? 'text-amber-400' : 'text-emerald-400'}`}>{hold.status}</span>
+                      {hold.status === "active" ? "Ready for pickup until" : "Reservation expires"}: <span className="text-white font-medium">{hold.expiration_date ? new Date(hold.expiration_date).toLocaleString() : "—"}</span>
                     </p>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                    {hold.status === 'active' ? (
-                      <button onClick={() => handleSuspendHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 rounded-lg transition-colors border border-amber-400/20">
-                        Suspend
-                      </button>
-                    ) : (
-                      <button onClick={() => handleActivateHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 rounded-lg transition-colors border border-emerald-400/20">
-                        Activate
-                      </button>
-                    )}
                     <button onClick={() => handleCancelHold(hold.id)} className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold text-red-400 bg-red-400/10 hover:bg-red-400/20 rounded-lg transition-colors border border-red-400/20">
                       Cancel
                     </button>
                   </div>
                </div>
             ))}
-          </div>
+          </div> : (
+            <div className="rounded-xl border border-dashed border-white/10 p-5 text-sm text-slate-400">
+              No book reserved. <Link href="/dashboard/books" className="text-indigo-400 hover:text-indigo-300">Browse the catalog</Link> to place a 12-hour hold.
+            </div>
+          )}
         </motion.div>
       )}
 

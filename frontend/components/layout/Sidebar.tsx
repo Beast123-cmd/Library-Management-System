@@ -71,7 +71,7 @@ export default function Sidebar() {
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
                     className="text-sm font-medium"
                   >
-                    {label}
+                    {!isAdmin && href === "/dashboard/transactions" ? "My Loans" : label}
                   </motion.span>
                 )}
               </motion.div>

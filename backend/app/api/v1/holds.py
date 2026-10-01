@@ -40,6 +40,18 @@ async def place_hold(
 ):
     """Reserve one available copy for collection within 12 hours."""
     await release_expired_holds(db)
+    await db.flush()
+    # Serialize reservations by this member, including holds on different books.
+    await db.execute(select(User.id).where(User.id == current_user.id).with_for_update())
+    existing_hold_result = await db.execute(
+        select(HoldQueue).where(
+            HoldQueue.user_id == current_user.id,
+            HoldQueue.status.in_([HoldQueueStatus.active, HoldQueueStatus.suspended]),
+        ).limit(1)
+    )
+    if existing_hold_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="You can hold only one book at a time. Collect or cancel your current hold first.")
+
     book_result = await db.execute(select(Book).where(Book.id == book_id).with_for_update())
     book = book_result.scalar_one_or_none()
     if not book:
@@ -47,17 +59,6 @@ async def place_hold(
 
     if book.available_copies < 1:
         raise HTTPException(status_code=400, detail="No copies are currently available to hold.")
-
-    # Check if they already have an active hold
-    existing_hold_result = await db.execute(
-        select(HoldQueue).where(
-            HoldQueue.user_id == current_user.id,
-            HoldQueue.book_id == book_id,
-            HoldQueue.status.in_([HoldQueueStatus.active, HoldQueueStatus.suspended])
-        )
-    )
-    if existing_hold_result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="You already have an active hold on this book.")
 
     expires_at = datetime.now(timezone.utc) + HOLD_DURATION
     new_hold = HoldQueue(

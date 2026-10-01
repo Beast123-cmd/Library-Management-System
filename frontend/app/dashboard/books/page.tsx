@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, AlertCircle, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 
 export default function BooksPage() {
   const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -25,6 +26,11 @@ export default function BooksPage() {
     queryKey: ["books", debouncedSearch, page],
     queryFn: () => api.get(`/books/?page=${page}&per_page=${PER_PAGE}&search=${debouncedSearch}`).then(r => r.data),
     placeholderData: keepPreviousData,
+  });
+  const { data: activeHolds, isLoading: holdsLoading } = useQuery({
+    queryKey: ["member-holds"],
+    queryFn: () => api.get("/holds/my-holds").then(r => r.data),
+    enabled: !isAdmin,
   });
 
   const [selectedBookForIssue, setSelectedBookForIssue] = useState<any>(null);
@@ -461,16 +467,17 @@ export default function BooksPage() {
                       toast.success("Book reserved for 12 hours. Please collect it from the library.");
                       setSelectedBookForDetails(null);
                       refetch();
+                      queryClient.invalidateQueries({ queryKey: ["member-holds"] });
                     } catch (e: any) {
                       toast.error(e?.response?.data?.detail || "Failed to place hold.");
                     } finally {
                       setIsPlacingHold(false);
                     }
                   }}
-                  disabled={selectedBookForDetails.available_copies < 1 || isPlacingHold}
+                  disabled={selectedBookForDetails.available_copies < 1 || isPlacingHold || holdsLoading || activeHolds?.length > 0}
                   className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isPlacingHold ? "Placing Hold..." : "Place Hold (12 hours)"}
+                  {isPlacingHold ? "Placing Hold..." : holdsLoading ? "Checking Holds..." : activeHolds?.length > 0 ? "Hold limit reached" : "Place Hold (12 hours)"}
                 </button>
               )}
             </div>

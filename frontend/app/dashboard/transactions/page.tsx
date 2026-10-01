@@ -1,6 +1,7 @@
 "use client";
+import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ArrowLeftRight, RotateCcw, Clock, Search, Filter, X, Check, AlertCircle, Calendar, ShieldCheck, HelpCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -8,8 +9,23 @@ import api from "@/lib/api";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 
+type ReturnReceipt = {
+  id: number;
+  book?: { title: string };
+  user?: { name: string };
+  issue_date: string;
+  expected_return_date: string;
+  actual_return_date: string;
+  overdue_days: number;
+  assessed_fine: number;
+  fine_amount: number;
+  waived: boolean;
+  waiver_reason?: string | null;
+};
+
 export default function TransactionsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -31,7 +47,7 @@ export default function TransactionsPage() {
   };
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["transactions", page, debouncedSearch, statusFilter],
+    queryKey: ["transactions", user?.id, page, debouncedSearch, statusFilter],
     queryFn: () => {
       let url = `/transactions/?page=${page}&per_page=${PER_PAGE}`;
       if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
@@ -39,15 +55,33 @@ export default function TransactionsPage() {
       return api.get(url).then(r => r.data);
     },
     placeholderData: keepPreviousData,
+    enabled: !!user,
   });
 
   const [returnTxn, setReturnTxn] = useState<any>(null);
   const [returnStep, setReturnStep] = useState(1);
-  const [fineAction, setFineAction] = useState<"paid" | "waived">("paid");
+  const [fineAction, setFineAction] = useState<"charged" | "waived">("charged");
+  const [waiverReason, setWaiverReason] = useState("");
+  const [receipt, setReceipt] = useState<ReturnReceipt | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [renewingId, setRenewingId] = useState<number | null>(null);
+
+  const handleRenew = async (txnId: number) => {
+    setRenewingId(txnId);
+    try {
+      await api.post(`/transactions/${txnId}/renew`);
+      toast.success("Loan renewed for 7 more days.");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["member-txns-summary"] });
+    } catch (error: unknown) {
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.detail || "Could not renew this loan." : "Could not renew this loan.");
+    } finally {
+      setRenewingId(null);
+    }
+  };
 
   const calculateFineClient = (expectedReturnDateStr: string) => {
-    const expected = new Date(expectedReturnDateStr);
+    const expected = new Date(`${expectedReturnDateStr}T00:00:00`);
     expected.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -70,13 +104,19 @@ export default function TransactionsPage() {
 
   const handleFinalizeReturn = async () => {
     if (!returnTxn) return;
+    if (fineAction === "waived" && waiverReason.trim().length < 3) {
+      toast.error("Enter a reason for waiving the fine.");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await api.post(`/transactions/${returnTxn.id}/return`, {
-        waive_fine: fineAction === "waived"
+      const { data: returnReceipt } = await api.post<ReturnReceipt>(`/transactions/${returnTxn.id}/return`, {
+        waive_fine: fineAction === "waived",
+        waiver_reason: fineAction === "waived" ? waiverReason.trim() : null,
       });
-      toast.success("Book returned successfully!");
       setReturnTxn(null);
+      setReceipt(returnReceipt);
+      toast.success("Book returned. Receipt is ready.");
       refetch();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || "Return failed.");
@@ -85,11 +125,20 @@ export default function TransactionsPage() {
     }
   };
 
+  const handleViewReceipt = async (txnId: number) => {
+    try {
+      const { data: savedReceipt } = await api.get<ReturnReceipt>(`/transactions/${txnId}/receipt`);
+      setReceipt(savedReceipt);
+    } catch {
+      toast.error("Could not load the return receipt.");
+    }
+  };
+
   const getStatusInfo = (txn: any) => {
     if (txn.status === "returned") {
       return { label: "Returned", badge: "bg-emerald-500/15 text-emerald-400" };
     }
-    const isOverdue = new Date(txn.expected_return_date) < new Date();
+    const isOverdue = new Date(`${txn.expected_return_date}T23:59:59`) < new Date();
     if (isOverdue) {
       return { label: "Overdue", badge: "bg-red-500/15 text-red-400 font-semibold animate-pulse" };
     }
@@ -104,9 +153,9 @@ export default function TransactionsPage() {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <ArrowLeftRight className="text-purple-400" size={26} /> Transactions
+            <ArrowLeftRight className="text-purple-400" size={26} /> {isAdmin ? "Transactions" : "My Loans"}
           </h1>
-          <p className="text-slate-400 text-sm mt-1">{data?.total ?? "—"} total records</p>
+          <p className="text-slate-400 text-sm mt-1">{data?.total ?? "—"} {isAdmin ? "total records" : "loans and returns"}</p>
         </div>
       </motion.div>
 
@@ -146,7 +195,7 @@ export default function TransactionsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/5">
-                {["ID", ...(isAdmin ? ["Member"] : []), "Book", "Issued", "Expected Return", "Status", "Fine", ...(isAdmin ? ["Action"] : [])].map(h => (
+                {["ID", ...(isAdmin ? ["Member"] : []), "Book", "Issued", "Expected Return", "Status", "Fine", "Action"].map(h => (
                   <th key={h} className="text-left text-slate-400 text-xs font-semibold uppercase tracking-wider px-6 py-4">{h}</th>
                 ))}
               </tr>
@@ -155,15 +204,17 @@ export default function TransactionsPage() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-white/5">
-                    {Array.from({ length: isAdmin ? 8 : 6 }).map((_, j) => (
+                    {Array.from({ length: isAdmin ? 8 : 7 }).map((_, j) => (
                       <td key={j} className="px-6 py-4"><div className="h-4 bg-white/5 rounded animate-pulse w-3/4" /></td>
                     ))}
                   </tr>
                 ))
               ) : data?.data?.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-500">No transactions found.</td></tr>
+                <tr><td colSpan={isAdmin ? 8 : 7} className="px-6 py-16 text-center text-slate-500">{isAdmin ? "No transactions found." : "No loans found."}</td></tr>
               ) : data?.data?.map((txn: any) => {
                 const { label, badge } = getStatusInfo(txn);
+                const estimatedFine = txn.status === "issued" ? calculateFineClient(txn.expected_return_date).fine : 0;
+                const dueDateHasNotPassed = new Date(`${txn.expected_return_date}T23:59:59`) >= new Date();
                 return (
                   <tr key={txn.id} className="border-b border-white/5 hover:bg-white/3 transition-colors group">
                     <td className="px-6 py-4 text-slate-500 text-sm">#{txn.id}</td>
@@ -176,6 +227,7 @@ export default function TransactionsPage() {
                       <span className="flex items-center gap-1 text-slate-400">
                         <Clock size={13} /> {txn.expected_return_date}
                       </span>
+                      {!isAdmin && txn.status === "issued" && <span className="text-xs text-slate-500">{txn.renewal_count ?? 0}/1 renewals used</span>}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${badge}`}>
@@ -183,9 +235,11 @@ export default function TransactionsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm">
-                      {txn.fine_amount > 0
-                        ? <span className="text-red-400 font-medium">₹{txn.fine_amount}</span>
-                        : <span className="text-slate-500">₹0</span>}
+                      {estimatedFine > 0
+                        ? <span className="text-red-400 font-medium">Est. ₹{estimatedFine}</span>
+                        : txn.fine_amount > 0
+                          ? <span className="text-red-400 font-medium">₹{txn.fine_amount}</span>
+                          : <span className="text-slate-500">₹0</span>}
                     </td>
                     {isAdmin && (
                       <td className="px-6 py-4">
@@ -193,10 +247,31 @@ export default function TransactionsPage() {
                           <button onClick={() => {
                             setReturnTxn(txn);
                             setReturnStep(1);
-                            setFineAction("paid");
+                            setFineAction("charged");
+                            setWaiverReason("");
                           }}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 transition-all">
                             <RotateCcw size={13} /> Return
+                          </button>
+                        )}
+                        {txn.status === "returned" && (
+                          <button onClick={() => handleViewReceipt(txn.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10">
+                            View Receipt
+                          </button>
+                        )}
+                      </td>
+                    )}
+                    {!isAdmin && (
+                      <td className="px-6 py-4">
+                        {txn.status === "issued" && dueDateHasNotPassed && (txn.renewal_count ?? 0) < 1 && (
+                          <button onClick={() => handleRenew(txn.id)} disabled={renewingId !== null}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10 disabled:opacity-50">
+                            {renewingId === txn.id ? "Renewing…" : "Renew 7 days"}
+                          </button>
+                        )}
+                        {txn.status === "returned" && (
+                          <button onClick={() => handleViewReceipt(txn.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10">
+                            View Receipt
                           </button>
                         )}
                       </td>
@@ -317,17 +392,17 @@ export default function TransactionsPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <button
                           type="button"
-                          onClick={() => setFineAction("paid")}
+                          onClick={() => setFineAction("charged")}
                           className={`p-4 rounded-xl border text-left space-y-2 transition-all ${
-                            fineAction === "paid"
+                            fineAction === "charged"
                               ? "bg-indigo-600/10 border-indigo-500 text-white"
                               : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10"
                           }`}
                         >
                           <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold">₹</div>
                           <div>
-                            <h5 className="font-semibold text-sm text-white">Fine Paid</h5>
-                            <p className="text-[11px] text-slate-400 mt-0.5">Payment collected successfully</p>
+                            <h5 className="font-semibold text-sm text-white">Charge Fine</h5>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Record the amount due on this return</p>
                           </div>
                         </button>
 
@@ -349,6 +424,13 @@ export default function TransactionsPage() {
                           </div>
                         </button>
                       </div>
+                      {fineAction === "waived" && (
+                        <div className="space-y-2">
+                          <label htmlFor="waiver-reason" className="text-sm font-medium text-slate-300">Reason for waiver</label>
+                          <textarea id="waiver-reason" value={waiverReason} onChange={(event) => setWaiverReason(event.target.value)} maxLength={500} rows={2}
+                            placeholder="Why is this fine being waived?" className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500" />
+                        </div>
+                      )}
                     </motion.div>
                   )}
 
@@ -362,7 +444,7 @@ export default function TransactionsPage() {
                         </div>
                         <div className="flex items-center gap-3 text-sm">
                           <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs">✓</span>
-                          <span>Increment available copies in catalog (+1).</span>
+                          <span>Update book availability and any waiting hold.</span>
                         </div>
                         <div className="flex items-center gap-3 text-sm">
                           <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs">✓</span>
@@ -372,7 +454,7 @@ export default function TransactionsPage() {
                               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                                 fineAction === "waived" ? "bg-amber-500/20 text-amber-400" : "bg-indigo-500/20 text-indigo-400"
                               }`}>
-                                {fineAction === "waived" ? "Waived" : "Paid"}
+                                {fineAction === "waived" ? "Waived" : "Charged"}
                               </span>
                             </span>
                           ) : (
@@ -380,6 +462,7 @@ export default function TransactionsPage() {
                           )}
                         </div>
                       </div>
+                      {fine > 0 && fineAction === "waived" && <p className="text-sm text-slate-300">Waiver reason: {waiverReason || "Required before returning"}</p>}
                       <p className="text-slate-400 text-xs italic text-center">
                         Click "Finalize Return" to record the transaction and update the book stock.
                       </p>
@@ -428,7 +511,13 @@ export default function TransactionsPage() {
                     )}
                     {returnStep === 2 && (
                       <button
-                        onClick={() => setReturnStep(3)}
+                        onClick={() => {
+                          if (fineAction === "waived" && waiverReason.trim().length < 3) {
+                            toast.error("Enter a reason for waiving the fine.");
+                            return;
+                          }
+                          setReturnStep(3);
+                        }}
                         className="px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-600/20"
                       >
                         Continue
@@ -457,6 +546,29 @@ export default function TransactionsPage() {
           );
         })()}
       </AnimatePresence>
+      {receipt && (
+        <div role="dialog" aria-modal="true" aria-label="Return receipt" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 text-white shadow-2xl space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold">Return Receipt #{receipt.id}</h3>
+                <p className="text-sm text-slate-400">{receipt.book?.title ?? "Book"} · {receipt.user?.name ?? "Member"}</p>
+              </div>
+              <button onClick={() => setReceipt(null)} aria-label="Close receipt" className="text-slate-400 hover:text-white"><X size={18} /></button>
+            </div>
+            <dl className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-400">Issued</dt><dd>{receipt.issue_date}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-400">Due</dt><dd>{receipt.expected_return_date}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-400">Returned</dt><dd>{receipt.actual_return_date}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-400">Overdue</dt><dd>{receipt.overdue_days} days</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-400">Fine assessed</dt><dd>₹{receipt.assessed_fine.toFixed(2)}</dd></div>
+              <div className="flex justify-between font-semibold"><dt>Amount charged</dt><dd>₹{receipt.fine_amount.toFixed(2)}</dd></div>
+            </dl>
+            {receipt.waived && <p className="text-sm text-amber-300">Waiver reason: {receipt.waiver_reason}</p>}
+            <button onClick={() => setReceipt(null)} className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold hover:bg-indigo-500">Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
