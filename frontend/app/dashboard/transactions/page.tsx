@@ -221,7 +221,10 @@ export default function TransactionsPage() {
                     {isAdmin && (
                       <td className="px-6 py-4 text-slate-300 text-sm">{txn.user?.name ?? `User #${txn.user_id}`}</td>
                     )}
-                    <td className="px-6 py-4 text-white font-medium text-sm">{txn.book?.title ?? `Book #${txn.book_id}`}</td>
+                    <td className="px-6 py-4 text-white font-medium text-sm">
+                      <p>{txn.book?.title ?? `Book #${txn.book_id}`}</p>
+                      {txn.copy?.accession_number && <p className="text-xs text-slate-500 mt-0.5">{txn.copy.accession_number}</p>}
+                    </td>
                     <td className="px-6 py-4 text-slate-400 text-sm">{txn.issue_date}</td>
                     <td className="px-6 py-4 text-sm">
                       <span className="flex items-center gap-1 text-slate-400">

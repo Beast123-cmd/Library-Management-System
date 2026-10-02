@@ -8,8 +8,9 @@ from datetime import datetime, date, timezone
 from app.db.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
 from app.core.holds import HOLD_DURATION, release_expired_holds
-from app.models.models import User, Book, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
+from app.models.models import User, Book, BookCopy, CopyStatus, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
 from app.schemas.schemas import HoldQueueOut
+from app.core.copies import available_copy
 
 router = APIRouter(prefix="/holds", tags=["Holds"])
 
@@ -60,6 +61,10 @@ async def place_hold(
     if book.available_copies < 1:
         raise HTTPException(status_code=400, detail="No copies are currently available to hold.")
 
+    copy = await available_copy(db, book.id)
+    if not copy:
+        raise HTTPException(status_code=409, detail="Available copies need inventory records before this book can be held.")
+
     expires_at = datetime.now(timezone.utc) + HOLD_DURATION
     new_hold = HoldQueue(
         user_id=current_user.id,
@@ -71,10 +76,12 @@ async def place_hold(
     db.add(Transaction(
         user_id=current_user.id,
         book_id=book_id,
+        copy_id=copy.id,
         issue_date=date.today(),
         expected_return_date=expires_at.date(),
         status=TransactionStatus.on_hold_shelf,
     ))
+    copy.status = CopyStatus.on_hold_shelf
     book.available_copies -= 1
     await db.commit()
     await db.refresh(new_hold)
@@ -179,6 +186,9 @@ async def cancel_hold(
         )
     ).scalar_one_or_none()
     if hold_transaction:
+        copy = await db.get(BookCopy, hold_transaction.copy_id, with_for_update=True) if hold_transaction.copy_id else None
+        if copy:
+            copy.status = CopyStatus.available
         await db.delete(hold_transaction)
     await db.commit()
     

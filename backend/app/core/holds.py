@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Book, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
+from app.models.models import Book, BookCopy, CopyStatus, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
 
 HOLD_DURATION = timedelta(hours=12)
 
@@ -36,4 +36,7 @@ async def release_expired_holds(db: AsyncSession) -> None:
             )
         ).scalar_one_or_none()
         if hold_transaction:
+            copy = await db.get(BookCopy, hold_transaction.copy_id, with_for_update=True) if hold_transaction.copy_id else None
+            if copy:
+                copy.status = CopyStatus.available
             await db.delete(hold_transaction)

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1.transactions import get_return_receipt, return_book
 from app.db.database import Base
-from app.models.models import Book, Transaction, TransactionStatus, User, UserRole
+from app.models.models import Book, BookCopy, CopyStatus, Transaction, TransactionStatus, User, UserRole
 from app.schemas.schemas import ReturnRequest
 
 
@@ -29,9 +29,12 @@ class ReturnReceiptTests(unittest.IsolatedAsyncioTestCase):
             book = Book(title="Book", author="Author", total_copies=1, available_copies=0)
             db.add_all([admin, borrower, other, book])
             await db.flush()
+            copy = BookCopy(book_id=book.id, copy_number=1, accession_number=f"B{book.id}-0001", status=CopyStatus.issued)
+            db.add(copy)
+            await db.flush()
             loan = Transaction(
                 user_id=borrower.id, book_id=book.id, issue_date=date.today() - timedelta(days=9),
-                expected_return_date=date.today() - timedelta(days=2), status=TransactionStatus.issued,
+                copy_id=copy.id, expected_return_date=date.today() - timedelta(days=2), status=TransactionStatus.issued,
             )
             db.add(loan)
             await db.commit()

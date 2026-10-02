@@ -103,12 +103,23 @@ class BookOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BookCopyOut(BaseModel):
+    id: int
+    book_id: int
+    copy_number: int
+    accession_number: str
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
 # ==============================================================================
 # TRANSACTION SCHEMAS
 # ==============================================================================
 class TransactionCreate(BaseModel):
     user_id: int
     book_id: int
+    copy_id: Optional[int] = None
     expected_return_date: date
 
 
@@ -136,6 +147,7 @@ class TransactionOut(BaseModel):
     renewal_count: int = 0
     user: Optional[UserOut] = None
     book: Optional[BookOut] = None
+    copy_detail: Optional[BookCopyOut] = Field(None, validation_alias="copy", serialization_alias="copy")
 
     model_config = {"from_attributes": True}
 

@@ -3,10 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from typing import Optional
 from app.db.database import get_db
-from app.models.models import Book
-from app.schemas.schemas import BookCreate, BookUpdate, BookOut, PaginatedResponse
+from app.models.models import Book, BookCopy, CopyStatus
+from app.schemas.schemas import BookCreate, BookUpdate, BookOut, BookCopyOut, PaginatedResponse
 from app.core.dependencies import get_current_user, get_current_admin
 from app.models.models import User
+from app.core.copies import add_copies
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -101,6 +102,8 @@ async def create_book(
         description=payload.description,
     )
     db.add(book)
+    await db.flush()
+    await add_copies(db, book, payload.total_copies)
     await db.commit()
     await db.refresh(book)
     return book
@@ -124,6 +127,29 @@ async def update_book(
         diff = update_data["total_copies"] - book.total_copies
         if book.available_copies + diff < 0:
             raise HTTPException(status_code=400, detail="Cannot reduce total copies below currently checked out copies.")
+        if diff < 0:
+            copies = (await db.execute(
+                select(BookCopy)
+                .where(BookCopy.book_id == book.id, BookCopy.status == CopyStatus.available)
+                .order_by(BookCopy.copy_number.desc())
+                .limit(-diff)
+                .with_for_update()
+            )).scalars().all()
+            if len(copies) != -diff:
+                raise HTTPException(status_code=400, detail="Available copy records do not match this book's inventory.")
+            for copy in copies:
+                copy.status = CopyStatus.withdrawn
+        elif diff > 0:
+            withdrawn = (await db.execute(
+                select(BookCopy)
+                .where(BookCopy.book_id == book.id, BookCopy.status == CopyStatus.withdrawn)
+                .order_by(BookCopy.copy_number)
+                .limit(diff)
+                .with_for_update()
+            )).scalars().all()
+            for copy in withdrawn:
+                copy.status = CopyStatus.available
+            await add_copies(db, book, diff - len(withdrawn))
         book.available_copies += diff
 
     for field, value in update_data.items():
@@ -132,6 +158,20 @@ async def update_book(
     await db.commit()
     await db.refresh(book)
     return book
+
+
+@router.get("/{book_id}/copies", response_model=list[BookCopyOut])
+async def list_book_copies(
+    book_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """List individually tracked copies for staff inventory checks."""
+    if not await db.get(Book, book_id):
+        raise HTTPException(status_code=404, detail="Book not found.")
+    return (await db.execute(
+        select(BookCopy).where(BookCopy.book_id == book_id).order_by(BookCopy.copy_number)
+    )).scalars().all()
 
 
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)

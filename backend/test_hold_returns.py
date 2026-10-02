@@ -9,6 +9,8 @@ from app.api.v1.transactions import return_book
 from app.db.database import Base
 from app.models.models import (
     Book,
+    BookCopy,
+    CopyStatus,
     HoldQueue,
     HoldQueueStatus,
     Transaction,
@@ -36,10 +38,17 @@ class HoldReturnTests(unittest.IsolatedAsyncioTestCase):
             book = Book(title="Test Book", author="Author", total_copies=2 if with_shelf_copy else 1, available_copies=0)
             db.add_all([admin, member, book])
             await db.flush()
+            copies = [
+                BookCopy(book_id=book.id, copy_number=number, accession_number=f"B{book.id}-{number:04d}")
+                for number in range(1, book.total_copies + 1)
+            ]
+            db.add_all(copies)
+            await db.flush()
             issued = Transaction(
                 user_id=admin.id, book_id=book.id, issue_date=date.today(),
-                expected_return_date=date.today() + timedelta(days=7), status=TransactionStatus.issued,
+                copy_id=copies[0].id, expected_return_date=date.today() + timedelta(days=7), status=TransactionStatus.issued,
             )
+            copies[0].status = CopyStatus.issued
             hold = HoldQueue(
                 user_id=member.id, book_id=book.id, status=HoldQueueStatus.active,
                 expiration_date=datetime.now(timezone.utc) + timedelta(hours=12) if with_shelf_copy else None,
@@ -48,8 +57,9 @@ class HoldReturnTests(unittest.IsolatedAsyncioTestCase):
             if with_shelf_copy:
                 db.add(Transaction(
                     user_id=member.id, book_id=book.id, issue_date=date.today(),
-                    expected_return_date=date.today(), status=TransactionStatus.on_hold_shelf,
+                    copy_id=copies[1].id, expected_return_date=date.today(), status=TransactionStatus.on_hold_shelf,
                 ))
+                copies[1].status = CopyStatus.on_hold_shelf
             await db.commit()
             return admin.id, book.id, issued.id, hold.id
 

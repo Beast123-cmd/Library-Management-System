@@ -6,10 +6,11 @@ from sqlalchemy import select, func
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from app.db.database import get_db
-from app.models.models import AuditLog, Transaction, Book, User, TransactionStatus, HoldQueue, HoldQueueStatus
+from app.models.models import AuditLog, Transaction, Book, BookCopy, CopyStatus, User, TransactionStatus, HoldQueue, HoldQueueStatus
 from app.schemas.schemas import TransactionCreate, TransactionOut, PaginatedResponse, ReturnRequest, ReturnReceipt
 from app.core.dependencies import get_current_user, get_current_admin
 from app.core.holds import HOLD_DURATION, release_expired_holds
+from app.core.copies import available_copy
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -40,7 +41,7 @@ async def list_transactions(
     current_user: User = Depends(get_current_user)
 ):
     """List transactions. Admins see all; members see their own."""
-    query = select(Transaction).options(selectinload(Transaction.user), selectinload(Transaction.book))
+    query = select(Transaction).options(selectinload(Transaction.user), selectinload(Transaction.book), selectinload(Transaction.copy))
     count_query = select(func.count()).select_from(Transaction)
 
     if current_user.role.value != "admin":
@@ -138,7 +139,7 @@ async def renew_loan(
     await db.commit()
     result = await db.execute(
         select(Transaction)
-        .options(selectinload(Transaction.user), selectinload(Transaction.book))
+        .options(selectinload(Transaction.user), selectinload(Transaction.book), selectinload(Transaction.copy))
         .where(Transaction.id == txn.id)
     )
     return TransactionOut.model_validate(result.scalar_one()).model_copy(update={"renewal_count": 1})
@@ -154,7 +155,7 @@ async def issue_book(
     await release_expired_holds(db)
     await db.flush()
     # Verify book exists
-    book_result = await db.execute(select(Book).where(Book.id == payload.book_id))
+    book_result = await db.execute(select(Book).where(Book.id == payload.book_id).with_for_update())
     book = book_result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found.")
@@ -181,6 +182,10 @@ async def issue_book(
         hold_txn.issue_date = date.today()
         hold_txn.expected_return_date = payload.expected_return_date
         txn = hold_txn
+        copy = await db.get(BookCopy, hold_txn.copy_id, with_for_update=True) if hold_txn.copy_id else None
+        if not copy:
+            raise HTTPException(status_code=409, detail="This reserved copy needs an inventory record before it can be issued.")
+        copy.status = CopyStatus.issued
         hold_result = await db.execute(
             select(HoldQueue).where(
                 HoldQueue.user_id == payload.user_id,
@@ -196,9 +201,14 @@ async def issue_book(
         if book.available_copies < 1:
             raise HTTPException(status_code=400, detail="No copies of this book are currently available.")
         
+        copy = await available_copy(db, book.id)
+        if not copy:
+            raise HTTPException(status_code=409, detail="Available copies need inventory records before this book can be issued.")
+        copy.status = CopyStatus.issued
         txn = Transaction(
             user_id=payload.user_id,
             book_id=payload.book_id,
+            copy_id=copy.id,
             issue_date=date.today(),
             expected_return_date=payload.expected_return_date,
             status=TransactionStatus.issued
@@ -211,7 +221,7 @@ async def issue_book(
     # Reload with relationships loaded for serialization
     stmt = (
         select(Transaction)
-        .options(selectinload(Transaction.user), selectinload(Transaction.book))
+        .options(selectinload(Transaction.user), selectinload(Transaction.book), selectinload(Transaction.copy))
         .where(Transaction.id == txn.id)
     )
     result = await db.execute(stmt)
@@ -229,7 +239,7 @@ async def get_return_receipt(
     """Show a completed return to staff or the member who borrowed it."""
     txn = (await db.execute(
         select(Transaction)
-        .options(selectinload(Transaction.user), selectinload(Transaction.book))
+        .options(selectinload(Transaction.user), selectinload(Transaction.book), selectinload(Transaction.copy))
         .where(Transaction.id == txn_id)
     )).scalar_one_or_none()
     if txn is None or (current_user.role.value != "admin" and txn.user_id != current_user.id):
@@ -295,10 +305,13 @@ async def return_book(
     ))
 
     # Handle book availability and hold trapping
-    book_result = await db.execute(select(Book).where(Book.id == txn.book_id))
+    book_result = await db.execute(select(Book).where(Book.id == txn.book_id).with_for_update())
     book = book_result.scalar_one_or_none()
     
     if book:
+        copy = await db.get(BookCopy, txn.copy_id, with_for_update=True) if txn.copy_id else None
+        if not copy:
+            raise HTTPException(status_code=409, detail="This loan needs an inventory record before it can be returned.")
         # A new hold already has a shelf transaction. Only route a returned copy
         # to an older queued hold that is still waiting for one.
         has_shelf_copy = select(Transaction.id).where(
@@ -322,13 +335,16 @@ async def return_book(
             new_txn = Transaction(
                 book_id=book.id,
                 user_id=next_hold.user_id,
+                copy_id=copy.id,
                 status=TransactionStatus.on_hold_shelf,
                 issue_date=today,
                 expected_return_date=next_hold.expiration_date.date(),
             )
             db.add(new_txn)
+            copy.status = CopyStatus.on_hold_shelf
         else:
             book.available_copies += 1
+            copy.status = CopyStatus.available
 
     await db.commit()
     return await get_return_receipt(txn.id, db, admin)

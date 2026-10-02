@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, date
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Date, Float,
-    ForeignKey, Enum as SAEnum, Text, func
+    ForeignKey, Enum as SAEnum, Text, UniqueConstraint, func
 )
 from sqlalchemy.orm import relationship
 from app.db.database import Base
@@ -21,6 +21,13 @@ class TransactionStatus(str, enum.Enum):
     returned = "returned"
     overdue = "overdue"
     lost = "lost"
+
+
+class CopyStatus(str, enum.Enum):
+    available = "available"
+    issued = "issued"
+    on_hold_shelf = "on_hold_shelf"
+    withdrawn = "withdrawn"
 # ==============================================================================
 # USER MODEL
 # ==============================================================================
@@ -66,6 +73,22 @@ class Book(Base):
 
     # Relationships
     transactions = relationship("Transaction", back_populates="book")
+    copies = relationship("BookCopy", back_populates="book", cascade="all, delete-orphan")
+
+
+class BookCopy(Base):
+    __tablename__ = "book_copies"
+    __table_args__ = (UniqueConstraint("book_id", "copy_number", name="uq_book_copy_number"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    copy_number = Column(Integer, nullable=False)
+    accession_number = Column(String(80), unique=True, index=True, nullable=False)
+    status = Column(SAEnum(CopyStatus, native_enum=False), default=CopyStatus.available, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    book = relationship("Book", back_populates="copies")
+    transactions = relationship("Transaction", back_populates="copy")
 
 
 # ==============================================================================
@@ -77,6 +100,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    copy_id = Column(Integer, ForeignKey("book_copies.id"), nullable=True, index=True)
     issue_date = Column(Date, nullable=False)
     expected_return_date = Column(Date, nullable=False)
     actual_return_date = Column(Date, nullable=True)
@@ -86,6 +110,7 @@ class Transaction(Base):
     # Relationships
     user = relationship("User", back_populates="transactions")
     book = relationship("Book", back_populates="transactions")
+    copy = relationship("BookCopy", back_populates="transactions")
 
 
 # ==============================================================================

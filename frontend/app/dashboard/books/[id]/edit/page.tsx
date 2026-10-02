@@ -6,6 +6,12 @@ import { useRouter, useParams } from "next/navigation";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 
+type BookCopy = {
+  id: number;
+  accession_number: string;
+  status: string;
+};
+
 export default function EditBookPage() {
   const router = useRouter();
   const { id } = useParams();
@@ -24,6 +30,7 @@ export default function EditBookPage() {
   const [shelfLocation, setShelfLocation] = useState("");
   const [totalCopies, setTotalCopies] = useState<number>(1);
   const [coverUrl, setCoverUrl] = useState("");
+  const [copies, setCopies] = useState<BookCopy[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -47,6 +54,7 @@ export default function EditBookPage() {
         toast.error("Failed to load book details.");
         router.push("/dashboard/books");
       });
+    api.get(`/books/${id}/copies`).then((res) => setCopies(res.data)).catch(() => setCopies([]));
   }, [id, router]);
 
   const handleAutoFill = async () => {
@@ -284,6 +292,24 @@ export default function EditBookPage() {
           </div>
         </form>
       </motion.div>
+
+      <div className="glass p-6">
+        <h2 className="text-sm font-semibold text-white">Physical Copies</h2>
+        <p className="text-xs text-slate-400 mt-1">Each checkout is linked to one accession number.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {copies.map((copy) => (
+            <span key={copy.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+              copy.status === "available" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+              copy.status === "issued" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+              copy.status === "on_hold_shelf" ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/20" :
+              "bg-slate-500/10 text-slate-400 border-slate-500/20"
+            }`}>
+              {copy.accession_number} · {copy.status.replaceAll("_", " ")}
+            </span>
+          ))}
+          {copies.length === 0 && <p className="text-sm text-slate-500">No copy records yet.</p>}
+        </div>
+      </div>
     </div>
   );
 }

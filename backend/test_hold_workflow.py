@@ -1,13 +1,14 @@
 import unittest
 from datetime import date, timedelta
 
+from sqlalchemy import select
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1.holds import place_hold
 from app.api.v1.transactions import issue_book
 from app.db.database import Base
-from app.models.models import Book, HoldQueue, HoldQueueStatus, TransactionStatus, User, UserRole
+from app.models.models import Book, BookCopy, CopyStatus, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus, User, UserRole
 from app.schemas.schemas import TransactionCreate
 
 
@@ -28,6 +29,11 @@ class HoldWorkflowTests(unittest.IsolatedAsyncioTestCase):
             first = Book(title="First", author="Author", total_copies=1, available_copies=1)
             second = Book(title="Second", author="Author", total_copies=1, available_copies=1)
             db.add_all([admin, member, first, second])
+            await db.flush()
+            db.add_all([
+                BookCopy(book_id=first.id, copy_number=1, accession_number="B1-0001"),
+                BookCopy(book_id=second.id, copy_number=1, accession_number="B2-0001"),
+            ])
             await db.commit()
             admin_id, member_id, first_id, second_id = admin.id, member.id, first.id, second.id
 
@@ -35,6 +41,8 @@ class HoldWorkflowTests(unittest.IsolatedAsyncioTestCase):
             hold_id = hold.id
             self.assertEqual(first.available_copies, 0)
             self.assertIsNotNone(hold.expiration_date)
+            shelf_copy_id = await db.scalar(select(Transaction.copy_id).where(Transaction.status == TransactionStatus.on_hold_shelf))
+            self.assertEqual((await db.get(BookCopy, shelf_copy_id)).status, CopyStatus.on_hold_shelf)
 
             with self.assertRaises(HTTPException) as error:
                 await place_hold(second.id, db, member)
@@ -48,6 +56,7 @@ class HoldWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 await db.get(User, admin_id),
             )
             self.assertEqual(loan.status, TransactionStatus.issued)
+            self.assertEqual((await db.get(BookCopy, shelf_copy_id)).status, CopyStatus.issued)
             self.assertEqual((await db.get(HoldQueue, hold_id)).status, HoldQueueStatus.fulfilled)
 
             next_hold = await place_hold(second_id, db, await db.get(User, member_id))
