@@ -13,7 +13,9 @@ This tracks the day-to-day library improvements discussed in the recent project 
 
 ## Next
 
-1. **Inventory:** category, language, publisher, shelf location, and individually tracked physical copies.
+1. **Inventory:**
+   - [x] Category, language, publisher, edition, shelf location, and catalog filters.
+   - [ ] Individually tracked physical copies in circulation.
 2. **Catalog and member portal:** filters, richer book cards, loan and fine details, and notification preferences.
 3. **Staff tools:** today’s due/overdue/pickup work, CSV exports, audit activity, and archive instead of deleting records in use.
 4. **Notifications:** in-app due, overdue, ready-for-pickup, and expiring-hold notices before email delivery.

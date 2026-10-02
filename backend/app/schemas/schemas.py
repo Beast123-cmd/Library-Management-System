@@ -58,6 +58,11 @@ class BookCreate(BaseModel):
     author: str = Field(..., min_length=1, max_length=150)
     isbn: Optional[str] = None
     publish_year: Optional[int] = Field(None, ge=1000, le=2100)
+    category: Optional[str] = Field(None, min_length=1, max_length=100)
+    language: Optional[str] = Field(None, min_length=1, max_length=100)
+    publisher: Optional[str] = Field(None, min_length=1, max_length=150)
+    edition: Optional[str] = Field(None, min_length=1, max_length=100)
+    shelf_location: Optional[str] = Field(None, min_length=1, max_length=100)
     total_copies: int = Field(1, ge=1)
     cover_url: Optional[str] = None
     description: Optional[str] = None
@@ -68,6 +73,11 @@ class BookUpdate(BaseModel):
     author: Optional[str] = Field(None, min_length=1, max_length=150)
     isbn: Optional[str] = None
     publish_year: Optional[int] = Field(None, ge=1000, le=2100)
+    category: Optional[str] = Field(None, min_length=1, max_length=100)
+    language: Optional[str] = Field(None, min_length=1, max_length=100)
+    publisher: Optional[str] = Field(None, min_length=1, max_length=150)
+    edition: Optional[str] = Field(None, min_length=1, max_length=100)
+    shelf_location: Optional[str] = Field(None, min_length=1, max_length=100)
     total_copies: Optional[int] = Field(None, ge=1)
     cover_url: Optional[str] = None
     description: Optional[str] = None
@@ -79,6 +89,11 @@ class BookOut(BaseModel):
     author: str
     isbn: Optional[str] = None
     publish_year: Optional[int] = None
+    category: Optional[str] = None
+    language: Optional[str] = None
+    publisher: Optional[str] = None
+    edition: Optional[str] = None
+    shelf_location: Optional[str] = None
     total_copies: int
     available_copies: int
     cover_url: Optional[str] = None

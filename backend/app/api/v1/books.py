@@ -16,6 +16,9 @@ async def list_books(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
+    category: Optional[str] = Query(None, max_length=100),
+    language: Optional[str] = Query(None, max_length=100),
+    available_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user)
 ):
@@ -27,10 +30,21 @@ async def list_books(
         filter_expr = or_(
             Book.title.ilike(f"%{search}%"),
             Book.author.ilike(f"%{search}%"),
-            Book.isbn.ilike(f"%{search}%")
+            Book.isbn.ilike(f"%{search}%"),
+            Book.publisher.ilike(f"%{search}%")
         )
         query = query.where(filter_expr)
         count_query = count_query.where(filter_expr)
+
+    for field, value in ((Book.category, category), (Book.language, language)):
+        if value:
+            filter_expr = field.ilike(f"%{value}%")
+            query = query.where(filter_expr)
+            count_query = count_query.where(filter_expr)
+
+    if available_only:
+        query = query.where(Book.available_copies > 0)
+        count_query = count_query.where(Book.available_copies > 0)
 
     total = (await db.execute(count_query)).scalar()
     offset = (page - 1) * per_page
@@ -76,9 +90,15 @@ async def create_book(
         author=payload.author,
         isbn=payload.isbn,
         publish_year=payload.publish_year,
+        category=payload.category,
+        language=payload.language,
+        publisher=payload.publisher,
+        edition=payload.edition,
+        shelf_location=payload.shelf_location,
         total_copies=payload.total_copies,
         available_copies=payload.total_copies,
-        cover_url=payload.cover_url
+        cover_url=payload.cover_url,
+        description=payload.description,
     )
     db.add(book)
     await db.commit()

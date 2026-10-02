@@ -15,6 +15,11 @@ export default function AddBookPage() {
   const [author, setAuthor] = useState("");
   const [isbn, setIsbn] = useState("");
   const [publishYear, setPublishYear] = useState<number | "">("");
+  const [category, setCategory] = useState("");
+  const [language, setLanguage] = useState("");
+  const [publisher, setPublisher] = useState("");
+  const [edition, setEdition] = useState("");
+  const [shelfLocation, setShelfLocation] = useState("");
   const [totalCopies, setTotalCopies] = useState<number>(1);
   const [coverUrl, setCoverUrl] = useState("");
 
@@ -37,6 +42,7 @@ export default function AddBookPage() {
           const yearMatch = bookData.publish_date.match(/\d{4}/);
           if (yearMatch) setPublishYear(parseInt(yearMatch[0]));
         }
+        if (bookData.publishers?.[0]?.name) setPublisher(bookData.publishers[0].name);
         if (bookData.cover && bookData.cover.large) {
           setCoverUrl(bookData.cover.large);
         } else if (bookData.cover && bookData.cover.medium) {
@@ -65,8 +71,12 @@ export default function AddBookPage() {
         author,
         isbn: isbn || null,
         publish_year: publishYear || null,
+        category: category || null,
+        language: language || null,
+        publisher: publisher || null,
+        edition: edition || null,
+        shelf_location: shelfLocation || null,
         total_copies: totalCopies,
-        available_copies: totalCopies,
         cover_url: coverUrl || null,
       });
       toast.success("Book added successfully!");
@@ -158,6 +168,33 @@ export default function AddBookPage() {
               placeholder="e.g. F. Scott Fitzgerald"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Category</label>
+              <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Fiction" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Language</label>
+              <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="e.g. English" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Publisher</label>
+              <input type="text" value={publisher} onChange={(e) => setPublisher(e.target.value)} placeholder="e.g. Penguin" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Edition</label>
+              <input type="text" value={edition} onChange={(e) => setEdition(e.target.value)} placeholder="e.g. 2nd edition" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Shelf Location</label>
+            <input type="text" value={shelfLocation} onChange={(e) => setShelfLocation(e.target.value)} placeholder="e.g. A-03" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

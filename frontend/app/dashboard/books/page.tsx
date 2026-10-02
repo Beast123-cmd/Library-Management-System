@@ -12,6 +12,9 @@ export default function BooksPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [category, setCategory] = useState("");
+  const [language, setLanguage] = useState("");
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
 
@@ -23,8 +26,15 @@ export default function BooksPage() {
   };
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["books", debouncedSearch, page],
-    queryFn: () => api.get(`/books/?page=${page}&per_page=${PER_PAGE}&search=${debouncedSearch}`).then(r => r.data),
+    queryKey: ["books", debouncedSearch, category, language, availableOnly, page],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE) });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (category.trim()) params.set("category", category.trim());
+      if (language.trim()) params.set("language", language.trim());
+      if (availableOnly) params.set("available_only", "true");
+      return api.get(`/books/?${params}`).then(r => r.data);
+    },
     placeholderData: keepPreviousData,
   });
   const { data: activeHolds, isLoading: holdsLoading } = useQuery({
@@ -191,6 +201,27 @@ export default function BooksPage() {
         )}
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input
+          value={category}
+          onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+          placeholder="Filter by category"
+          aria-label="Filter by category"
+          className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+        />
+        <input
+          value={language}
+          onChange={(e) => { setLanguage(e.target.value); setPage(1); }}
+          placeholder="Filter by language"
+          aria-label="Filter by language"
+          className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+        />
+        <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 cursor-pointer">
+          <input type="checkbox" checked={availableOnly} onChange={(e) => { setAvailableOnly(e.target.checked); setPage(1); }} className="accent-indigo-500" />
+          Available now
+        </label>
+      </div>
+
       {/* Table */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="glass overflow-hidden">
@@ -234,7 +265,12 @@ export default function BooksPage() {
                             <BookOpen size={16} className="text-slate-500" />
                           </div>
                         )}
-                        <span className="text-white font-medium">{book.title}</span>
+                        <div>
+                          <span className="text-white font-medium">{book.title}</span>
+                          {(book.category || book.language || book.shelf_location) && (
+                            <p className="text-xs text-slate-500 mt-0.5">{[book.category, book.language, book.shelf_location].filter(Boolean).join(" · ")}</p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-300">{book.author}</td>
@@ -430,6 +466,11 @@ export default function BooksPage() {
                     <span className="inline-flex w-fit px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-slate-300">
                       ISBN: {selectedBookForDetails.isbn || "N/A"}
                     </span>
+                    {(selectedBookForDetails.category || selectedBookForDetails.language || selectedBookForDetails.publisher || selectedBookForDetails.edition || selectedBookForDetails.shelf_location) && (
+                      <span className="inline-flex w-fit px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-slate-300">
+                        {[selectedBookForDetails.category, selectedBookForDetails.language, selectedBookForDetails.publisher, selectedBookForDetails.edition, selectedBookForDetails.shelf_location].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                     <span className={`inline-flex w-fit px-2 py-1 border rounded text-xs font-semibold ${selectedBookForDetails.available_copies > 0 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
                       {selectedBookForDetails.available_copies > 0 ? `${selectedBookForDetails.available_copies} Copies Available` : "Out of Stock"}
                     </span>
