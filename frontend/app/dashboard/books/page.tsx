@@ -182,6 +182,10 @@ export default function BooksPage() {
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1;
   const activeFilters = [category, language, author, publisher, shelfLocation, availableOnly].filter(Boolean).length;
   const clearFilters = () => { setCategory(""); setLanguage(""); setAuthor(""); setPublisher(""); setShelfLocation(""); setAvailableOnly(false); setPage(1); };
+  const goToPage = (nextPage: number) => {
+    setPage(nextPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const firstResult = data?.total ? (page - 1) * PER_PAGE + 1 : 0;
   const lastResult = data?.total ? Math.min(page * PER_PAGE, data.total) : 0;
   const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter(number => number === 1 || number === totalPages || Math.abs(number - page) <= 1);
@@ -341,7 +345,7 @@ export default function BooksPage() {
         )}
       </motion.div>
 
-      {totalPages > 1 && <nav className="catalog-pagination" aria-label="Catalog pages"><button onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1} className="catalog-page-direction"><ChevronLeft size={17} /> <span>Previous</span></button><div className="flex items-center gap-1" aria-label={`Page ${page} of ${totalPages}`}>{pageNumbers.map((number, index) => <span key={number} className="flex items-center gap-1">{index > 0 && number - pageNumbers[index - 1] > 1 && <span className="catalog-page-gap">…</span>}<button onClick={() => setPage(number)} className={`catalog-page-number ${page === number ? "catalog-page-current" : ""}`} aria-current={page === number ? "page" : undefined}>{number}</button></span>)}</div><button onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="catalog-page-direction"><span>Next</span> <ChevronRight size={17} /></button></nav>}
+      {totalPages > 1 && <nav className="catalog-pagination" aria-label="Catalog pages"><button onClick={() => goToPage(Math.max(1, page - 1))} disabled={page === 1} className="catalog-page-direction"><ChevronLeft size={17} /> <span>Previous</span></button><div className="flex items-center gap-1" aria-label={`Page ${page} of ${totalPages}`}>{pageNumbers.map((number, index) => <span key={number} className="flex items-center gap-1">{index > 0 && number - pageNumbers[index - 1] > 1 && <span className="catalog-page-gap">…</span>}<button onClick={() => goToPage(number)} className={`catalog-page-number ${page === number ? "catalog-page-current" : ""}`} aria-current={page === number ? "page" : undefined}>{number}</button></span>)}</div><button onClick={() => goToPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} className="catalog-page-direction"><span>Next</span> <ChevronRight size={17} /></button></nav>}
 
       {/* Issue Book Modal */}
       {selectedBookForIssue && (
