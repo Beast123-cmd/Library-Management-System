@@ -1,115 +1,36 @@
 "use client";
+
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { BookOpen, Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
-import toast from "react-hot-toast";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { ArrowLeft, BookOpen, Eye, EyeOff, Lock, Loader2, ShieldCheck, UserRound } from "lucide-react";
+import toast from "react-hot-toast";
+import { useAuth } from "@/context/AuthContext";
+
+function Field({ label, icon: Icon, children }: { label: string; icon: typeof Lock; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><span className="relative block"><Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={17} />{children}</span></label>;
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showPass, setShowPass] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username || !password) return toast.error("Please fill in all fields.");
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!username || !password) return toast.error("Enter your username and password.");
     setLoading(true);
-    try {
-      await login(username, password);
-      toast.success("Welcome back!");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Invalid credentials.");
-    } finally {
-      setLoading(false);
-    }
+    try { await login(username, password); toast.success("Welcome back."); }
+    catch (error: any) { toast.error(error?.response?.data?.detail || "Those details did not match an account."); }
+    finally { setLoading(false); }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden"
-      style={{ background: "radial-gradient(ellipse at 60% 0%, rgba(99,102,241,0.15) 0%, #0f1117 60%)" }}>
-
-      {/* Animated background blobs */}
-      <div className="absolute top-20 left-20 w-72 h-72 bg-indigo-600/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl animate-pulse delay-1000" />
-
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-        className="glass glow w-full max-w-md mx-4 p-8"
-      >
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: "spring" }}
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30"
-          >
-            <BookOpen className="text-white" size={32} />
-          </motion.div>
-          <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-          <p className="text-slate-400 text-sm mt-1">Sign in to your library account</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Username */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Username</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Password */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-              <input
-                type={showPass ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-              />
-              <button type="button" onClick={() => setShowPass(!showPass)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Submit */}
-          <motion.button
-            type="submit"
-            disabled={loading}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : null}
-            {loading ? "Signing in..." : "Sign In"}
-          </motion.button>
-        </form>
-
-        <p className="text-center text-slate-400 text-sm mt-6">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-            Create one
-          </Link>
-        </p>
-      </motion.div>
+  return <main className="auth-shell min-h-screen">
+    <Link href="/" className="auth-back"><ArrowLeft size={16} /> Back to home</Link>
+    <div className="auth-grid">
+      <section className="auth-intro"><Link href="/" className="flex items-center gap-2.5 text-white font-semibold"><span className="brand-mark"><BookOpen size={19} /></span> Library Desk</Link><div className="mt-auto mb-auto"><p className="eyebrow">Your library, organized</p><h1 className="mt-5 text-4xl sm:text-5xl font-bold tracking-[-0.04em] leading-tight text-white">Welcome back to your reading space.</h1><p className="mt-5 max-w-md text-slate-300 leading-7">Pick up where you left off: manage your loans, find your next book, and keep every visit on track.</p><div className="mt-8 space-y-3 text-sm text-slate-300"><p className="flex items-center gap-3"><ShieldCheck size={17} className="text-teal-200" /> Your account and circulation data stay protected.</p><p className="flex items-center gap-3"><BookOpen size={17} className="text-teal-200" /> Every loan is tied to an individual library copy.</p></div></div></section>
+      <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="auth-card"><div><p className="text-sm font-medium text-teal-200">Sign in</p><h2 className="mt-2 text-3xl font-bold tracking-tight text-white">Good to see you.</h2><p className="mt-2 text-sm text-slate-400">Use the username and password from your library account.</p></div><form onSubmit={submit} className="mt-8 space-y-5"><Field label="Username" icon={UserRound}><input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="Your username" className="input-control" /></Field><Field label="Password" icon={Lock}><input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="Your password" className="input-control pr-12" /><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-teal-200">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></Field><button disabled={loading} className="brand-button w-full justify-center py-3.5 disabled:opacity-60">{loading && <Loader2 size={17} className="animate-spin" />}{loading ? "Signing in…" : "Sign in"}</button></form><p className="mt-7 text-sm text-slate-400">New to the library? <Link href="/signup" className="font-medium text-teal-200 hover:text-teal-100">Create an account</Link></p></motion.section>
     </div>
-  );
+  </main>;
 }
