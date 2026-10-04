@@ -11,6 +11,7 @@ from app.schemas.schemas import TransactionCreate, TransactionOut, PaginatedResp
 from app.core.dependencies import get_current_user, get_current_admin
 from app.core.holds import HOLD_DURATION, release_expired_holds
 from app.core.copies import available_copy
+from app.core.catalog_cache import catalog_cache
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -137,6 +138,7 @@ async def renew_loan(
         details=f"member_id={current_user.id}; old_due={old_due_date}; new_due={txn.expected_return_date}",
     ))
     await db.commit()
+    catalog_cache.invalidate()
     result = await db.execute(
         select(Transaction)
         .options(selectinload(Transaction.user), selectinload(Transaction.book), selectinload(Transaction.copy))
@@ -217,6 +219,7 @@ async def issue_book(
         db.add(txn)
 
     await db.commit()
+    catalog_cache.invalidate()
     
     # Reload with relationships loaded for serialization
     stmt = (
@@ -347,4 +350,5 @@ async def return_book(
             copy.status = CopyStatus.available
 
     await db.commit()
+    catalog_cache.invalidate()
     return await get_return_receipt(txn.id, db, admin)

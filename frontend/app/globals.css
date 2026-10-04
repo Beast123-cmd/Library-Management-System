@@ -209,6 +209,17 @@ body {
 .filter-select option { background: #10252b; color: #ecfdf5; }
 .catalog-filter-input { width: 100%; padding: 0 .85rem; outline: none; }
 .catalog-filter-input:focus { border-color: #2dd4bf; }
+.catalog-filter-field { display: grid; gap: .4rem; color: #9db9b5; font-size: .74rem; font-weight: 650; }
+.catalog-filter-field select { min-height: 2.9rem; width: 100%; border: 1px solid rgba(203,231,229,.11); border-radius: .75rem; padding: 0 .75rem; outline: none; color: #d9eeeb; background: rgba(255,255,255,.04); font-size: .86rem; font-weight: 400; }
+.catalog-filter-field select:focus { border-color: #2dd4bf; }
+.catalog-filter-field option { color: #ecfdf5; background: #10252b; }
+.availability-filter { display: flex; min-height: 2.9rem; align-items: center; gap: .7rem; border: 1px solid rgba(203,231,229,.11); border-radius: .75rem; padding: .55rem .8rem; color: #a7c8c4; text-align: left; background: rgba(255,255,255,.04); transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease; }
+.availability-filter:hover, .availability-filter-active { border-color: rgba(45,212,191,.42); color: #d9fffa; background: rgba(20,184,166,.1); }
+.availability-filter span:last-child { display: grid; gap: .08rem; }
+.availability-filter b { font-size: .82rem; font-weight: 650; }
+.availability-filter small { color: #86a7a1; font-size: .7rem; }
+.availability-check { display: inline-flex; width: 1.15rem; height: 1.15rem; flex: none; align-items: center; justify-content: center; border: 1px solid rgba(203,231,229,.28); border-radius: .32rem; color: #06211f; background: transparent; font-size: .76rem; font-weight: 800; }
+.availability-filter-active .availability-check { border-color: #5eead4; background: #5eead4; }
 .catalog-filter-chip, .catalog-meta { display: inline-flex; align-items: center; border-radius: 999px; color: #a7c8c4; background: rgba(255,255,255,.045); border: 1px solid rgba(203,231,229,.08); font-size: .7rem; }
 .catalog-filter-chip { padding: .3rem .55rem; }
 .catalog-meta { padding: .22rem .45rem; font-size: .68rem; }
@@ -220,6 +231,14 @@ body {
 .catalog-icon-action { display: inline-flex; width: 2.35rem; height: 2.35rem; align-items: center; justify-content: center; border: 1px solid rgba(203,231,229,.1); border-radius: .65rem; color: #9cbab7; background: rgba(255,255,255,.035); transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease; }
 .catalog-icon-action:hover { color: #ccfbf1; border-color: rgba(45,212,191,.27); background: rgba(20,184,166,.1); }
 .catalog-empty { grid-column: 1 / -1; display: flex; min-height: 16rem; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed rgba(203,231,229,.14); border-radius: 1rem; background: rgba(255,255,255,.02); text-align: center; }
+.catalog-pagination { display: flex; align-items: center; justify-content: space-between; gap: .75rem; border-top: 1px solid rgba(203,231,229,.08); padding-top: 1.25rem; }
+.catalog-page-direction, .catalog-page-number { display: inline-flex; min-height: 2.35rem; align-items: center; justify-content: center; gap: .3rem; border: 1px solid rgba(203,231,229,.11); border-radius: .65rem; color: #a7c8c4; background: rgba(255,255,255,.035); font-size: .78rem; font-weight: 650; transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease; }
+.catalog-page-direction { padding: 0 .75rem; }
+.catalog-page-number { min-width: 2.35rem; padding: 0 .45rem; }
+.catalog-page-direction:hover:not(:disabled), .catalog-page-number:hover { color: #d9fffa; border-color: rgba(45,212,191,.3); background: rgba(20,184,166,.1); }
+.catalog-page-direction:disabled { opacity: .35; cursor: not-allowed; }
+.catalog-page-current { color: #06211f; border-color: #5eead4; background: #5eead4; }
+.catalog-page-gap { color: #779690; font-size: .85rem; }
 
 @media (max-width: 767px) {
   .auth-grid { display: block; width: min(100%, 30rem); margin-top: 2.8rem; }
@@ -234,6 +253,7 @@ body {
 .light .auth-intro .text-slate-300, .light .marketing-shell .text-slate-300 { color: #456765 !important; }
 .light .catalog-card { background: rgba(255,255,255,.88); box-shadow: 0 10px 24px rgba(15,118,110,.08); }
 .light .filter-trigger, .light .filter-select, .light .catalog-filter-input { color: #335a57; background: #f8fffe; }
+.light .catalog-filter-field select, .light .availability-filter, .light .catalog-page-direction, .light .catalog-page-number { color: #335a57; background: #f8fffe; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }

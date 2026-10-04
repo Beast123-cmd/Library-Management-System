@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import asc, desc, select, func, or_
 from typing import Optional
@@ -8,6 +8,7 @@ from app.schemas.schemas import BookCreate, BookUpdate, BookOut, BookCopyOut, Pa
 from app.core.dependencies import get_current_user, get_current_admin
 from app.models.models import User
 from app.core.copies import add_copies
+from app.core.catalog_cache import catalog_cache
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -25,9 +26,18 @@ async def list_books(
     available_only: bool = Query(False),
     sort_by: str = Query("title", pattern="^(title|newest|year_desc|year_asc|availability)$"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user)
+    _: User = Depends(get_current_user),
+    response: Response = None,
 ):
-    """List all books with pagination and optional search."""
+    """List the catalogue with cached, paginated search results."""
+    cache_key = (id(db.bind), page, per_page, search, category, language, author, publisher, shelf_location, available_only, sort_by)
+    cached = catalog_cache.get(cache_key)
+    if cached is not None:
+        if response:
+            response.headers["Cache-Control"] = "private, max-age=30"
+            response.headers["Vary"] = "Authorization"
+        return PaginatedResponse.model_validate(cached)
+
     query = select(Book)
     count_query = select(func.count()).select_from(Book)
 
@@ -69,12 +79,44 @@ async def list_books(
     result = await db.execute(query.offset(offset).limit(per_page).order_by(ordering, Book.title))
     books = result.scalars().all()
 
-    return PaginatedResponse(
+    payload = PaginatedResponse(
         total=total,
         page=page,
         per_page=per_page,
         data=[BookOut.model_validate(b) for b in books]
     )
+    catalog_cache.set(cache_key, payload.model_dump(mode="json"), ttl_seconds=30)
+    if response:
+        response.headers["Cache-Control"] = "private, max-age=30"
+        response.headers["Vary"] = "Authorization"
+    return payload
+
+
+@router.get("/filter-options")
+async def catalog_filter_options(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Return curated filter choices once instead of sending users free-text fields."""
+    cache_key = (id(db.bind), "filter-options")
+    cached = catalog_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    fields = {
+        "categories": Book.category,
+        "languages": Book.language,
+        "authors": Book.author,
+        "publishers": Book.publisher,
+        "shelves": Book.shelf_location,
+    }
+    options = {}
+    for key, field in fields.items():
+        options[key] = list((await db.execute(
+            select(field).where(field.is_not(None)).distinct().order_by(field)
+        )).scalars())
+    catalog_cache.set(cache_key, options, ttl_seconds=300)
+    return options
 
 
 @router.get("/{book_id}", response_model=BookOut)
@@ -123,6 +165,7 @@ async def create_book(
     await add_copies(db, book, payload.total_copies)
     await db.commit()
     await db.refresh(book)
+    catalog_cache.invalidate()
     return book
 
 
@@ -174,6 +217,7 @@ async def update_book(
 
     await db.commit()
     await db.refresh(book)
+    catalog_cache.invalidate()
     return book
 
 
@@ -204,3 +248,4 @@ async def delete_book(
         raise HTTPException(status_code=404, detail="Book not found.")
     await db.delete(book)
     await db.commit()
+    catalog_cache.invalidate()

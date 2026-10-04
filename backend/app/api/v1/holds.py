@@ -11,6 +11,7 @@ from app.core.holds import HOLD_DURATION, release_expired_holds
 from app.models.models import User, Book, BookCopy, CopyStatus, HoldQueue, HoldQueueStatus, Transaction, TransactionStatus
 from app.schemas.schemas import HoldQueueOut
 from app.core.copies import available_copy
+from app.core.catalog_cache import catalog_cache
 
 router = APIRouter(prefix="/holds", tags=["Holds"])
 
@@ -84,6 +85,7 @@ async def place_hold(
     copy.status = CopyStatus.on_hold_shelf
     book.available_copies -= 1
     await db.commit()
+    catalog_cache.invalidate()
     await db.refresh(new_hold)
 
     stmt = select(HoldQueue).options(selectinload(HoldQueue.book)).where(HoldQueue.id == new_hold.id)
@@ -128,6 +130,7 @@ async def suspend_hold(
         
     hold.status = HoldQueueStatus.suspended
     await db.commit()
+    catalog_cache.invalidate()
     
     stmt = select(HoldQueue).options(selectinload(HoldQueue.book)).where(HoldQueue.id == hold_id)
     ret = await db.execute(stmt)
@@ -191,6 +194,7 @@ async def cancel_hold(
             copy.status = CopyStatus.available
         await db.delete(hold_transaction)
     await db.commit()
+    catalog_cache.invalidate()
     
     stmt = select(HoldQueue).options(selectinload(HoldQueue.book)).where(HoldQueue.id == hold_id)
     ret = await db.execute(stmt)

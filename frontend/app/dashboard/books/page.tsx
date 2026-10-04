@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
@@ -22,14 +22,12 @@ export default function BooksPage() {
   const [sortBy, setSortBy] = useState("title");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const PER_PAGE = 15;
+  const PER_PAGE = 24;
 
-  // Debounce search - reduced to 200ms for snappier feel
-  const handleSearch = (val: string) => {
-    setSearch(val);
-    clearTimeout((window as any)._searchTimer);
-    (window as any)._searchTimer = setTimeout(() => { setDebouncedSearch(val); setPage(1); }, 200);
-  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["books", debouncedSearch, category, language, author, publisher, shelfLocation, availableOnly, sortBy, page],
@@ -46,6 +44,12 @@ export default function BooksPage() {
       return api.get(`/books/?${params}`).then(r => r.data);
     },
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+  const { data: filterOptions } = useQuery({
+    queryKey: ["catalog-filter-options"],
+    queryFn: () => api.get("/books/filter-options").then(r => r.data),
+    staleTime: 5 * 60_000,
   });
   const { data: activeHolds, isLoading: holdsLoading } = useQuery({
     queryKey: ["member-holds"],
@@ -176,15 +180,11 @@ export default function BooksPage() {
   };
 
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1;
-  const activeFilters = [
-    category && `Category: ${category}`,
-    language && `Language: ${language}`,
-    author && `Author: ${author}`,
-    publisher && `Publisher: ${publisher}`,
-    shelfLocation && `Shelf: ${shelfLocation}`,
-    availableOnly && "Available now",
-  ].filter(Boolean) as string[];
+  const activeFilters = [category, language, author, publisher, shelfLocation, availableOnly].filter(Boolean).length;
   const clearFilters = () => { setCategory(""); setLanguage(""); setAuthor(""); setPublisher(""); setShelfLocation(""); setAvailableOnly(false); setPage(1); };
+  const firstResult = data?.total ? (page - 1) * PER_PAGE + 1 : 0;
+  const lastResult = data?.total ? Math.min(page * PER_PAGE, data.total) : 0;
+  const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter(number => number === 1 || number === totalPages || Math.abs(number - page) <= 1);
 
   return (
     <div className="space-y-6">
@@ -208,14 +208,14 @@ export default function BooksPage() {
 
       <section className="catalog-controls glass p-3 sm:p-4">
         <div className="flex flex-col gap-3 lg:flex-row">
-          <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} /><input value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search title, author, ISBN, or publisher" className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-11 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all" />{isFetching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" size={18} />}</div>
-          <div className="grid grid-cols-2 gap-2 sm:flex"><button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={`filter-trigger ${filtersOpen || activeFilters.length ? "filter-trigger-active" : ""}`}><SlidersHorizontal size={17} /> Filters{activeFilters.length > 0 && <span>{activeFilters.length}</span>}</button><select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }} aria-label="Sort catalog" className="filter-select"><option value="title">Title A–Z</option><option value="newest">Recently added</option><option value="year_desc">Newest publication</option><option value="year_asc">Oldest publication</option><option value="availability">Most available</option></select></div>
+          <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title, author, ISBN, or publisher" className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-11 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all" />{search && <button type="button" onClick={() => setSearch("")} className="absolute right-10 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white" aria-label="Clear search"><X size={16} /></button>}{isFetching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" size={18} />}</div>
+          <div className="grid grid-cols-2 gap-2 sm:flex"><button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={`filter-trigger ${filtersOpen || activeFilters ? "filter-trigger-active" : ""}`}><SlidersHorizontal size={17} /> Filters{activeFilters > 0 && <span>{activeFilters}</span>}</button><select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }} aria-label="Sort catalog" className="filter-select"><option value="title">Title A–Z</option><option value="newest">Recently added</option><option value="year_desc">Newest publication</option><option value="year_asc">Oldest publication</option><option value="availability">Most available</option></select></div>
         </div>
-        {filtersOpen && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3 pt-3 border-t border-white/5"><input value={category} onChange={e => { setCategory(e.target.value); setPage(1); }} placeholder="Category, e.g. Fiction" className="catalog-filter-input" /><input value={language} onChange={e => { setLanguage(e.target.value); setPage(1); }} placeholder="Language, e.g. English" className="catalog-filter-input" /><input value={author} onChange={e => { setAuthor(e.target.value); setPage(1); }} placeholder="Author" className="catalog-filter-input" /><input value={publisher} onChange={e => { setPublisher(e.target.value); setPage(1); }} placeholder="Publisher" className="catalog-filter-input" /><label className="flex items-center gap-2 catalog-filter-input cursor-pointer"><MapPin size={16} className="text-slate-500" /><input value={shelfLocation} onChange={e => { setShelfLocation(e.target.value); setPage(1); }} placeholder="Shelf location" className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-500" /></label><label className="flex items-center gap-3 catalog-filter-input cursor-pointer text-slate-300"><input type="checkbox" checked={availableOnly} onChange={e => { setAvailableOnly(e.target.checked); setPage(1); }} className="accent-teal-500" /> Available to borrow now</label></motion.div>}
-        {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">{activeFilters.map(filter => <span key={filter} className="catalog-filter-chip">{filter}</span>)}<button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 px-2 text-xs text-slate-400 hover:text-white"><X size={13} /> Clear all</button></div>}
+        {filtersOpen && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-4 border-t border-white/5 pt-4"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-medium text-white">Refine your results</p>{activeFilters > 0 && <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-white"><X size={13} /> Reset filters</button>}</div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"><FilterSelect label="Category" value={category} options={filterOptions?.categories} onChange={value => { setCategory(value); setPage(1); }} /><FilterSelect label="Language" value={language} options={filterOptions?.languages} onChange={value => { setLanguage(value); setPage(1); }} /><FilterSelect label="Author" value={author} options={filterOptions?.authors} onChange={value => { setAuthor(value); setPage(1); }} /><FilterSelect label="Publisher" value={publisher} options={filterOptions?.publishers} onChange={value => { setPublisher(value); setPage(1); }} /><FilterSelect label="Shelf location" value={shelfLocation} options={filterOptions?.shelves} onChange={value => { setShelfLocation(value); setPage(1); }} /><button type="button" onClick={() => { setAvailableOnly(!availableOnly); setPage(1); }} className={`availability-filter ${availableOnly ? "availability-filter-active" : ""}`}><span className="availability-check">{availableOnly ? "✓" : ""}</span><span><b>Available now</b><small>Show books ready to borrow</small></span></button></div></motion.div>}
+        {activeFilters > 0 && <div className="mt-3 flex flex-wrap items-center gap-2"><span className="catalog-filter-chip">{activeFilters} filter{activeFilters > 1 ? "s" : ""} applied</span><button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 px-2 text-xs text-slate-400 hover:text-white"><X size={13} /> Clear all</button></div>}
       </section>
 
-      <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-400"><span className="text-white font-semibold">{data?.total ?? "—"}</span> titles found</p>{!filtersOpen && <button type="button" onClick={() => setAvailableOnly(!availableOnly)} className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${availableOnly ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}>Available now</button>}</div>
+      <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-400">{data?.total ? <>Showing <span className="font-semibold text-white">{firstResult}–{lastResult}</span> of <span className="font-semibold text-white">{data.total}</span> titles</> : "Loading catalog…"}</p>{!filtersOpen && <button type="button" onClick={() => { setAvailableOnly(!availableOnly); setPage(1); }} className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${availableOnly ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}>Available now</button>}</div>
 
       <div className="catalog-grid">
         {isLoading ? Array.from({ length: 8 }).map((_, index) => <div key={index} className="catalog-card h-[21rem] animate-pulse"><div className="h-36 bg-white/5 rounded-xl" /></div>) : data?.data?.length === 0 ? <div className="catalog-empty"><BookOpen size={28} className="text-slate-500" /><p className="mt-3 text-white font-medium">No books match these filters.</p><button type="button" onClick={clearFilters} className="mt-3 text-sm text-indigo-400 hover:text-indigo-300">Clear catalog filters</button></div> : data?.data?.map((book: any, index: number) => <motion.article key={book.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, 0.2) }} className="catalog-card group">
@@ -341,7 +341,7 @@ export default function BooksPage() {
         )}
       </motion.div>
 
-      {totalPages > 1 && <div className="flex items-center justify-between border-t border-white/5 pt-5"><p className="text-sm text-slate-400">Page {page} of {totalPages}</p><div className="flex items-center gap-2"><button onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1} className="catalog-icon-action disabled:opacity-35" aria-label="Previous page"><ChevronLeft size={17} /></button><button onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="catalog-icon-action disabled:opacity-35" aria-label="Next page"><ChevronRight size={17} /></button></div></div>}
+      {totalPages > 1 && <nav className="catalog-pagination" aria-label="Catalog pages"><button onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1} className="catalog-page-direction"><ChevronLeft size={17} /> <span>Previous</span></button><div className="flex items-center gap-1" aria-label={`Page ${page} of ${totalPages}`}>{pageNumbers.map((number, index) => <span key={number} className="flex items-center gap-1">{index > 0 && number - pageNumbers[index - 1] > 1 && <span className="catalog-page-gap">…</span>}<button onClick={() => setPage(number)} className={`catalog-page-number ${page === number ? "catalog-page-current" : ""}`} aria-current={page === number ? "page" : undefined}>{number}</button></span>)}</div><button onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="catalog-page-direction"><span>Next</span> <ChevronRight size={17} /></button></nav>}
 
       {/* Issue Book Modal */}
       {selectedBookForIssue && (
@@ -530,4 +530,8 @@ export default function BooksPage() {
       )}
     </div>
   );
+}
+
+function FilterSelect({ label, value, options = [], onChange }: { label: string; value: string; options?: string[]; onChange: (value: string) => void }) {
+  return <label className="catalog-filter-field"><span>{label}</span><select value={value} onChange={event => onChange(event.target.value)}><option value="">All {label.toLowerCase()}s</option>{options.map(option => <option key={option} value={option}>{option}</option>)}</select></label>;
 }
