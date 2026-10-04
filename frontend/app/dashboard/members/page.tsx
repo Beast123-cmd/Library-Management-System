@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Users, Search, Shield, ShieldAlert, CheckCircle, XCircle, ChevronLeft, ChevronRight, Plus, Edit, Trash2, Loader2 } from "lucide-react";
@@ -186,7 +187,7 @@ export default function MembersPage() {
                       <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold text-sm">
                         {member.name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-white font-medium">{member.name}</span>
+                      <Link href={`/dashboard/members/${member.id}`} className="font-medium text-white hover:text-teal-200">{member.name}</Link>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-slate-300">@{member.username}</td>
@@ -203,6 +204,7 @@ export default function MembersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
+                      <Link href={`/dashboard/members/${member.id}`} className="rounded-lg px-2 py-1.5 text-xs font-medium text-teal-300 hover:bg-teal-500/10">Profile</Link>
                       <button
                         onClick={() => handleToggleActive(member.id, member.is_active, member.name)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${

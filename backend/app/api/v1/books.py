@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+import csv
+import io
+
+from fastapi import APIRouter, Depends, File, HTTPException, status, Query, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import asc, desc, select, func, or_
 from typing import Optional
@@ -11,6 +15,8 @@ from app.core.copies import add_copies
 from app.core.catalog_cache import catalog_cache
 
 router = APIRouter(prefix="/books", tags=["Books"])
+
+CSV_FIELDS = ("title", "author", "isbn", "publish_year", "category", "language", "publisher", "edition", "shelf_location", "total_copies", "cover_url", "description")
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -117,6 +123,90 @@ async def catalog_filter_options(
         )).scalars())
     catalog_cache.set(cache_key, options, ttl_seconds=300)
     return options
+
+
+@router.get("/export")
+async def export_catalogue(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Export the catalogue in the same format accepted by the importer."""
+    books = (await db.execute(select(Book).order_by(Book.title))).scalars().all()
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    for book in books:
+        writer.writerow({field: getattr(book, field) or "" for field in CSV_FIELDS})
+    filename = "library-catalogue.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import")
+async def import_catalogue(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Create new books and tracked copies from a UTF-8 CSV; existing ISBNs are skipped."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Upload a CSV file.")
+    try:
+        raw = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="The CSV must use UTF-8 encoding.") from exc
+
+    rows = list(csv.DictReader(io.StringIO(raw)))
+    if not rows:
+        raise HTTPException(status_code=400, detail="The CSV has no book rows.")
+    if not {"title", "author"}.issubset(rows[0].keys()):
+        raise HTTPException(status_code=400, detail="CSV requires title and author columns.")
+    if len(rows) > 1000:
+        raise HTTPException(status_code=400, detail="Import up to 1,000 books at a time.")
+
+    existing_isbns = set((await db.execute(select(Book.isbn).where(Book.isbn.is_not(None)))).scalars())
+    created, skipped, errors = 0, 0, []
+    for line_number, row in enumerate(rows, start=2):
+        title, author = (row.get("title") or "").strip(), (row.get("author") or "").strip()
+        isbn = (row.get("isbn") or "").strip() or None
+        if not title or not author:
+            errors.append(f"Row {line_number}: title and author are required.")
+            continue
+        if isbn and isbn in existing_isbns:
+            skipped += 1
+            continue
+        try:
+            copies = max(1, int((row.get("total_copies") or "1").strip()))
+            publish_year = int(row["publish_year"]) if (row.get("publish_year") or "").strip() else None
+            if publish_year and not 1000 <= publish_year <= 2100:
+                raise ValueError("publish_year must be between 1000 and 2100")
+        except ValueError as exc:
+            errors.append(f"Row {line_number}: {exc}.")
+            continue
+        book = Book(
+            title=title, author=author, isbn=isbn, publish_year=publish_year,
+            category=(row.get("category") or "").strip() or None,
+            language=(row.get("language") or "").strip() or None,
+            publisher=(row.get("publisher") or "").strip() or None,
+            edition=(row.get("edition") or "").strip() or None,
+            shelf_location=(row.get("shelf_location") or "").strip() or None,
+            total_copies=copies, available_copies=copies,
+            cover_url=(row.get("cover_url") or "").strip() or None,
+            description=(row.get("description") or "").strip() or None,
+        )
+        db.add(book)
+        await db.flush()
+        await add_copies(db, book, copies)
+        if isbn:
+            existing_isbns.add(isbn)
+        created += 1
+
+    await db.commit()
+    catalog_cache.invalidate()
+    return {"created": created, "skipped": skipped, "errors": errors[:20]}
 
 
 @router.get("/{book_id}", response_model=BookOut)

@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, SlidersHorizontal, X, MapPin } from "lucide-react";
+import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, SlidersHorizontal, X, MapPin, Download, Upload } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import toast from "react-hot-toast";
@@ -11,6 +11,7 @@ import toast from "react-hot-toast";
 export default function BooksPage() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -63,6 +64,7 @@ export default function BooksPage() {
     return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<any>(null);
   const [bookDescription, setBookDescription] = useState<string | null>(null);
@@ -179,6 +181,31 @@ export default function BooksPage() {
     }
   };
 
+  const exportCatalogue = async () => {
+    try {
+      const response = await api.get("/books/export", { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url; link.download = "library-catalogue.csv"; link.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Could not export the catalogue."); }
+  };
+
+  const importCatalogue = async (file?: File) => {
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const formData = new FormData(); formData.append("file", file);
+      const response = await api.post("/books/import", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      const { created, skipped, errors } = response.data;
+      toast.success(`${created} book${created === 1 ? "" : "s"} imported${skipped ? `, ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}.`);
+      if (errors.length) toast.error(errors[0]);
+      queryClient.invalidateQueries({ queryKey: ["books"] });
+      queryClient.invalidateQueries({ queryKey: ["catalog-filter-options"] });
+    } catch (error: any) { toast.error(error?.response?.data?.detail || "Could not import this CSV."); }
+    finally { setIsImporting(false); if (importInputRef.current) importInputRef.current.value = ""; }
+  };
+
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1;
   const activeFilters = [category, language, author, publisher, shelfLocation, availableOnly].filter(Boolean).length;
   const clearFilters = () => { setCategory(""); setLanguage(""); setAuthor(""); setPublisher(""); setShelfLocation(""); setAvailableOnly(false); setPage(1); };
@@ -200,13 +227,16 @@ export default function BooksPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">{data?.total ?? "—"} total books</p>
         </div>
-        {isAdmin && (
+        {isAdmin && (<div className="flex items-center gap-2">
+          <input ref={importInputRef} onChange={event => importCatalogue(event.target.files?.[0])} type="file" accept=".csv,text/csv" className="hidden" />
+          <button type="button" onClick={() => importInputRef.current?.click()} disabled={isImporting} className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:border-teal-400/30 hover:text-teal-200 disabled:opacity-50"><Upload size={15} /> {isImporting ? "Importing…" : "Import CSV"}</button>
+          <button type="button" onClick={exportCatalogue} className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:border-teal-400/30 hover:text-teal-200"><Download size={15} /> Export</button>
           <a href="/dashboard/books/add">
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
               className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl text-white text-sm font-medium shadow-lg shadow-indigo-500/20 hover:opacity-90 transition-opacity">
               <Plus size={16} /> Add Book
             </motion.button>
-          </a>
+          </a></div>
         )}
       </motion.div>
 
@@ -224,7 +254,7 @@ export default function BooksPage() {
       <div className="catalog-grid">
         {isLoading ? Array.from({ length: 8 }).map((_, index) => <div key={index} className="catalog-card h-[21rem] animate-pulse"><div className="h-36 bg-white/5 rounded-xl" /></div>) : data?.data?.length === 0 ? <div className="catalog-empty"><BookOpen size={28} className="text-slate-500" /><p className="mt-3 text-white font-medium">No books match these filters.</p><button type="button" onClick={clearFilters} className="mt-3 text-sm text-indigo-400 hover:text-indigo-300">Clear catalog filters</button></div> : data?.data?.map((book: any, index: number) => <motion.article key={book.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, 0.2) }} className="catalog-card group">
           <div className="relative h-40 overflow-hidden rounded-xl bg-slate-800/50 border border-white/5">{book.cover_url ? <img src={book.cover_url} alt={book.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="h-full w-full flex items-center justify-center"><BookOpen size={32} className="text-slate-500" /></div>}<span className={`absolute right-3 top-3 rounded-full border px-2.5 py-1 text-[11px] font-semibold backdrop-blur ${book.available_copies > 0 ? "bg-emerald-500/15 border-emerald-400/20 text-emerald-300" : "bg-red-500/15 border-red-400/20 text-red-300"}`}>{book.available_copies > 0 ? `${book.available_copies} available` : "Unavailable"}</span></div>
-          <div className="mt-4 flex flex-1 flex-col"><div><h2 className="line-clamp-2 text-base font-semibold leading-5 text-white">{book.title}</h2><p className="mt-1 text-sm text-slate-400 line-clamp-1">{book.author}</p></div><div className="mt-3 flex flex-wrap gap-1.5">{[book.category, book.language].filter(Boolean).map((item: string) => <span key={item} className="catalog-meta">{item}</span>)}{book.shelf_location && <span className="catalog-meta inline-flex items-center gap-1"><MapPin size={11} />{book.shelf_location}</span>}</div><p className="mt-3 text-xs text-slate-500">{book.publish_year ? `Published ${book.publish_year}` : "Publication year unavailable"}{book.publisher ? ` · ${book.publisher}` : ""}</p><div className="mt-auto pt-4 flex items-center gap-2">{isAdmin ? <><button onClick={() => setSelectedBookForIssue(book)} disabled={book.available_copies < 1} className="catalog-card-action flex-1 disabled:opacity-40"><ArrowLeftRight size={15} /> Issue</button><Link href={`/dashboard/books/${book.id}/edit`} className="catalog-icon-action" aria-label={`Edit ${book.title}`}><Edit size={15} /></Link><button onClick={() => handleDelete(book.id, book.title)} className="catalog-icon-action hover:text-red-300" aria-label={`Delete ${book.title}`}><Trash2 size={15} /></button></> : <button onClick={() => handleViewDetails(book)} className="catalog-card-action w-full">View details</button>}</div></div>
+          <div className="mt-4 flex flex-1 flex-col"><div><h2 className="line-clamp-2 text-base font-semibold leading-5 text-white">{book.title}</h2><p className="mt-1 text-sm text-slate-400 line-clamp-1">{book.author}</p></div><div className="mt-3 flex flex-wrap gap-1.5">{[book.category, book.language].filter(Boolean).map((item: string) => <span key={item} className="catalog-meta">{item}</span>)}{book.shelf_location && <span className="catalog-meta inline-flex items-center gap-1"><MapPin size={11} />{book.shelf_location}</span>}</div><p className="mt-3 text-xs text-slate-500">{book.publish_year ? `Published ${book.publish_year}` : "Publication year unavailable"}{book.publisher ? ` · ${book.publisher}` : ""}</p><div className="mt-auto pt-4 flex items-center gap-2">{isAdmin ? <><button onClick={() => setSelectedBookForIssue(book)} disabled={book.available_copies < 1} className="catalog-card-action flex-1 disabled:opacity-40"><ArrowLeftRight size={15} /> Issue</button><Link href={`/dashboard/books/${book.id}/edit`} className="catalog-icon-action" aria-label={`Edit ${book.title}`}><Edit size={15} /></Link><button onClick={() => handleDelete(book.id, book.title)} className="catalog-icon-action hover:text-red-300" aria-label={`Delete ${book.title}`}><Trash2 size={15} /></button></> : <Link href={`/dashboard/books/${book.id}`} className="catalog-card-action w-full">View details</Link>}</div></div>
         </motion.article>)}</div>
 
       {/* Desktop table kept out of the visual flow while staff use the same responsive cards. */}

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.db.database import get_db
 from app.core.security import get_password_hash
@@ -108,6 +109,38 @@ async def create_member(
     return new_user
 
 
+@router.get("/{user_id}/profile")
+async def member_profile(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Give staff a member's account status and recent circulation history."""
+    member = await db.get(User, user_id)
+    if member is None or member.role != UserRole.member:
+        raise HTTPException(status_code=404, detail="Member not found.")
+    transactions = (await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.book))
+        .where(Transaction.user_id == user_id)
+        .order_by(Transaction.id.desc())
+        .limit(20)
+    )).scalars().all()
+    active_statuses = (TransactionStatus.issued, TransactionStatus.overdue)
+    active_loans = sum(transaction.status in active_statuses for transaction in transactions)
+    total_loans = (await db.execute(select(func.count(Transaction.id)).where(Transaction.user_id == user_id))).scalar_one()
+    return {
+        "member": UserOut.model_validate(member),
+        "summary": {"total_loans": total_loans, "active_loans": active_loans, "recent_fines": sum(float(transaction.fine_amount or 0) for transaction in transactions)},
+        "transactions": [{
+            "id": transaction.id, "title": transaction.book.title if transaction.book else "Removed book",
+            "status": transaction.status.value, "issue_date": transaction.issue_date,
+            "expected_return_date": transaction.expected_return_date, "actual_return_date": transaction.actual_return_date,
+            "fine_amount": float(transaction.fine_amount or 0),
+        } for transaction in transactions],
+    }
+
+
 @router.put("/{user_id}", response_model=UserOut)
 async def update_member(
     user_id: int,
@@ -191,4 +224,3 @@ async def toggle_member_active(
     await db.commit()
     await db.refresh(user)
     return user
-
