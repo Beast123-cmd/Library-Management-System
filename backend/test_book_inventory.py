@@ -27,7 +27,9 @@ class BookInventoryTests(unittest.IsolatedAsyncioTestCase):
             ])
             await db.commit()
 
-            result = await list_books(1, 20, None, "fiction", "english", True, db, member)
+            result = await list_books(
+                1, 20, None, "fiction", "english", "author", "press", "a-03", True, "year_desc", db, member
+            )
 
             self.assertEqual(result.total, 1)
             self.assertEqual(result.data[0].publisher, "Press")

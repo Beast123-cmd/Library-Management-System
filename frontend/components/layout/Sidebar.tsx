@@ -39,14 +39,14 @@ export default function Sidebar() {
       style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)" }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-6 border-b border-white/5">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-950/30">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-950/30">
           <BookMarked size={18} className="text-white" />
         </div>
         {!collapsed && (
           <motion.span
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
-            className="font-bold text-white text-sm tracking-wide"
+            className="font-bold text-white text-[15px] tracking-tight"
           >
             Library Desk
           </motion.span>
@@ -54,7 +54,8 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 px-2 space-y-1">
+      <nav className="flex-1 py-5 px-2 space-y-1">
+        {!collapsed && <p className="px-3 pb-2 text-[10px] font-bold tracking-[0.14em] text-slate-500">WORKSPACE</p>}
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
@@ -64,7 +65,7 @@ export default function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer",
                   active
-                    ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/20"
+                    ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/20 shadow-[inset_3px_0_0_#2dd4bf]"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
                 )}
               >
@@ -86,13 +87,13 @@ export default function Sidebar() {
       {/* User + Toggle + Logout */}
       <div className="border-t border-white/5 p-3">
         {!collapsed && user && (
-          <div className="flex items-center gap-3 px-2 py-2 mb-2">
+          <div className="flex items-center gap-3 px-2 py-2 mb-2 rounded-xl bg-white/[0.025] border border-white/5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
               {user.name[0].toUpperCase()}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-white text-xs font-semibold truncate">{user.name}</p>
-              <p className="text-slate-500 text-xs capitalize">{user.role}</p>
+            <div className="overflow-hidden min-w-0">
+            <p className="text-white text-xs font-semibold truncate">{user.name}</p>
+              <p className="text-slate-500 text-xs capitalize flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{user.role}</p>
             </div>
           </div>
         )}

@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, AlertCircle, Loader2 } from "lucide-react";
+import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, SlidersHorizontal, X, MapPin } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import toast from "react-hot-toast";
@@ -14,7 +15,12 @@ export default function BooksPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("");
   const [language, setLanguage] = useState("");
+  const [author, setAuthor] = useState("");
+  const [publisher, setPublisher] = useState("");
+  const [shelfLocation, setShelfLocation] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [sortBy, setSortBy] = useState("title");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
 
@@ -26,13 +32,17 @@ export default function BooksPage() {
   };
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["books", debouncedSearch, category, language, availableOnly, page],
+    queryKey: ["books", debouncedSearch, category, language, author, publisher, shelfLocation, availableOnly, sortBy, page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE) });
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (category.trim()) params.set("category", category.trim());
       if (language.trim()) params.set("language", language.trim());
+      if (author.trim()) params.set("author", author.trim());
+      if (publisher.trim()) params.set("publisher", publisher.trim());
+      if (shelfLocation.trim()) params.set("shelf_location", shelfLocation.trim());
       if (availableOnly) params.set("available_only", "true");
+      params.set("sort_by", sortBy);
       return api.get(`/books/?${params}`).then(r => r.data);
     },
     placeholderData: keepPreviousData,
@@ -166,6 +176,15 @@ export default function BooksPage() {
   };
 
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1;
+  const activeFilters = [
+    category && `Category: ${category}`,
+    language && `Language: ${language}`,
+    author && `Author: ${author}`,
+    publisher && `Publisher: ${publisher}`,
+    shelfLocation && `Shelf: ${shelfLocation}`,
+    availableOnly && "Available now",
+  ].filter(Boolean) as string[];
+  const clearFilters = () => { setCategory(""); setLanguage(""); setAuthor(""); setPublisher(""); setShelfLocation(""); setAvailableOnly(false); setPage(1); };
 
   return (
     <div className="space-y-6">
@@ -187,44 +206,26 @@ export default function BooksPage() {
         )}
       </motion.div>
 
-      {/* Search bar */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-        <input
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Search by title, author, or ISBN..."
-          className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-        />
-        {isFetching && (
-          <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" size={18} />
-        )}
-      </div>
+      <section className="catalog-controls glass p-3 sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} /><input value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search title, author, ISBN, or publisher" className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-11 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all" />{isFetching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin" size={18} />}</div>
+          <div className="grid grid-cols-2 gap-2 sm:flex"><button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={`filter-trigger ${filtersOpen || activeFilters.length ? "filter-trigger-active" : ""}`}><SlidersHorizontal size={17} /> Filters{activeFilters.length > 0 && <span>{activeFilters.length}</span>}</button><select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }} aria-label="Sort catalog" className="filter-select"><option value="title">Title A–Z</option><option value="newest">Recently added</option><option value="year_desc">Newest publication</option><option value="year_asc">Oldest publication</option><option value="availability">Most available</option></select></div>
+        </div>
+        {filtersOpen && <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3 pt-3 border-t border-white/5"><input value={category} onChange={e => { setCategory(e.target.value); setPage(1); }} placeholder="Category, e.g. Fiction" className="catalog-filter-input" /><input value={language} onChange={e => { setLanguage(e.target.value); setPage(1); }} placeholder="Language, e.g. English" className="catalog-filter-input" /><input value={author} onChange={e => { setAuthor(e.target.value); setPage(1); }} placeholder="Author" className="catalog-filter-input" /><input value={publisher} onChange={e => { setPublisher(e.target.value); setPage(1); }} placeholder="Publisher" className="catalog-filter-input" /><label className="flex items-center gap-2 catalog-filter-input cursor-pointer"><MapPin size={16} className="text-slate-500" /><input value={shelfLocation} onChange={e => { setShelfLocation(e.target.value); setPage(1); }} placeholder="Shelf location" className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-500" /></label><label className="flex items-center gap-3 catalog-filter-input cursor-pointer text-slate-300"><input type="checkbox" checked={availableOnly} onChange={e => { setAvailableOnly(e.target.checked); setPage(1); }} className="accent-teal-500" /> Available to borrow now</label></motion.div>}
+        {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">{activeFilters.map(filter => <span key={filter} className="catalog-filter-chip">{filter}</span>)}<button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 px-2 text-xs text-slate-400 hover:text-white"><X size={13} /> Clear all</button></div>}
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <input
-          value={category}
-          onChange={(e) => { setCategory(e.target.value); setPage(1); }}
-          placeholder="Filter by category"
-          aria-label="Filter by category"
-          className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
-        />
-        <input
-          value={language}
-          onChange={(e) => { setLanguage(e.target.value); setPage(1); }}
-          placeholder="Filter by language"
-          aria-label="Filter by language"
-          className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
-        />
-        <label className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 cursor-pointer">
-          <input type="checkbox" checked={availableOnly} onChange={(e) => { setAvailableOnly(e.target.checked); setPage(1); }} className="accent-indigo-500" />
-          Available now
-        </label>
-      </div>
+      <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-400"><span className="text-white font-semibold">{data?.total ?? "—"}</span> titles found</p>{!filtersOpen && <button type="button" onClick={() => setAvailableOnly(!availableOnly)} className={`text-xs font-medium rounded-full px-3 py-1.5 border transition-colors ${availableOnly ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"}`}>Available now</button>}</div>
 
-      {/* Table */}
+      <div className="catalog-grid">
+        {isLoading ? Array.from({ length: 8 }).map((_, index) => <div key={index} className="catalog-card h-[21rem] animate-pulse"><div className="h-36 bg-white/5 rounded-xl" /></div>) : data?.data?.length === 0 ? <div className="catalog-empty"><BookOpen size={28} className="text-slate-500" /><p className="mt-3 text-white font-medium">No books match these filters.</p><button type="button" onClick={clearFilters} className="mt-3 text-sm text-indigo-400 hover:text-indigo-300">Clear catalog filters</button></div> : data?.data?.map((book: any, index: number) => <motion.article key={book.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, 0.2) }} className="catalog-card group">
+          <div className="relative h-40 overflow-hidden rounded-xl bg-slate-800/50 border border-white/5">{book.cover_url ? <img src={book.cover_url} alt={book.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="h-full w-full flex items-center justify-center"><BookOpen size={32} className="text-slate-500" /></div>}<span className={`absolute right-3 top-3 rounded-full border px-2.5 py-1 text-[11px] font-semibold backdrop-blur ${book.available_copies > 0 ? "bg-emerald-500/15 border-emerald-400/20 text-emerald-300" : "bg-red-500/15 border-red-400/20 text-red-300"}`}>{book.available_copies > 0 ? `${book.available_copies} available` : "Unavailable"}</span></div>
+          <div className="mt-4 flex flex-1 flex-col"><div><h2 className="line-clamp-2 text-base font-semibold leading-5 text-white">{book.title}</h2><p className="mt-1 text-sm text-slate-400 line-clamp-1">{book.author}</p></div><div className="mt-3 flex flex-wrap gap-1.5">{[book.category, book.language].filter(Boolean).map((item: string) => <span key={item} className="catalog-meta">{item}</span>)}{book.shelf_location && <span className="catalog-meta inline-flex items-center gap-1"><MapPin size={11} />{book.shelf_location}</span>}</div><p className="mt-3 text-xs text-slate-500">{book.publish_year ? `Published ${book.publish_year}` : "Publication year unavailable"}{book.publisher ? ` · ${book.publisher}` : ""}</p><div className="mt-auto pt-4 flex items-center gap-2">{isAdmin ? <><button onClick={() => setSelectedBookForIssue(book)} disabled={book.available_copies < 1} className="catalog-card-action flex-1 disabled:opacity-40"><ArrowLeftRight size={15} /> Issue</button><Link href={`/dashboard/books/${book.id}/edit`} className="catalog-icon-action" aria-label={`Edit ${book.title}`}><Edit size={15} /></Link><button onClick={() => handleDelete(book.id, book.title)} className="catalog-icon-action hover:text-red-300" aria-label={`Delete ${book.title}`}><Trash2 size={15} /></button></> : <button onClick={() => handleViewDetails(book)} className="catalog-card-action w-full">View details</button>}</div></div>
+        </motion.article>)}</div>
+
+      {/* Desktop table kept out of the visual flow while staff use the same responsive cards. */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        className="glass overflow-hidden">
+        className="hidden glass overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -339,6 +340,8 @@ export default function BooksPage() {
           </div>
         )}
       </motion.div>
+
+      {totalPages > 1 && <div className="flex items-center justify-between border-t border-white/5 pt-5"><p className="text-sm text-slate-400">Page {page} of {totalPages}</p><div className="flex items-center gap-2"><button onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1} className="catalog-icon-action disabled:opacity-35" aria-label="Previous page"><ChevronLeft size={17} /></button><button onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="catalog-icon-action disabled:opacity-35" aria-label="Next page"><ChevronRight size={17} /></button></div></div>}
 
       {/* Issue Book Modal */}
       {selectedBookForIssue && (

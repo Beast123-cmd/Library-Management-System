@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import asc, desc, select, func, or_
 from typing import Optional
 from app.db.database import get_db
 from app.models.models import Book, BookCopy, CopyStatus
@@ -19,7 +19,11 @@ async def list_books(
     search: Optional[str] = Query(None),
     category: Optional[str] = Query(None, max_length=100),
     language: Optional[str] = Query(None, max_length=100),
+    author: Optional[str] = Query(None, max_length=150),
+    publisher: Optional[str] = Query(None, max_length=150),
+    shelf_location: Optional[str] = Query(None, max_length=100),
     available_only: bool = Query(False),
+    sort_by: str = Query("title", pattern="^(title|newest|year_desc|year_asc|availability)$"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user)
 ):
@@ -37,7 +41,13 @@ async def list_books(
         query = query.where(filter_expr)
         count_query = count_query.where(filter_expr)
 
-    for field, value in ((Book.category, category), (Book.language, language)):
+    for field, value in (
+        (Book.category, category),
+        (Book.language, language),
+        (Book.author, author),
+        (Book.publisher, publisher),
+        (Book.shelf_location, shelf_location),
+    ):
         if value:
             filter_expr = field.ilike(f"%{value}%")
             query = query.where(filter_expr)
@@ -49,7 +59,14 @@ async def list_books(
 
     total = (await db.execute(count_query)).scalar()
     offset = (page - 1) * per_page
-    result = await db.execute(query.offset(offset).limit(per_page).order_by(Book.title))
+    ordering = {
+        "title": asc(Book.title),
+        "newest": desc(Book.id),
+        "year_desc": desc(Book.publish_year).nullslast(),
+        "year_asc": asc(Book.publish_year).nullslast(),
+        "availability": desc(Book.available_copies),
+    }[sort_by]
+    result = await db.execute(query.offset(offset).limit(per_page).order_by(ordering, Book.title))
     books = result.scalars().all()
 
     return PaginatedResponse(

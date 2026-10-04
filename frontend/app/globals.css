@@ -193,6 +193,34 @@ body {
 .setting-switch { position: relative; width: 2.8rem; height: 1.55rem; flex: none; border-radius: 999px; transition: background-color 160ms ease; }
 .setting-switch span { position: absolute; top: 0.22rem; left: 0.22rem; width: 1.1rem; height: 1.1rem; border-radius: 999px; background: white; transition: transform 160ms ease; }
 
+.catalog-controls { box-shadow: none; }
+.filter-trigger, .filter-select, .catalog-filter-input {
+  min-height: 2.9rem;
+  border: 1px solid rgba(203, 231, 229, 0.11);
+  border-radius: 0.75rem;
+  color: #b7d0cd;
+  background: rgba(255,255,255,.04);
+  font-size: .86rem;
+}
+.filter-trigger { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: 0 .85rem; }
+.filter-trigger span { display: inline-flex; min-width: 1.2rem; height: 1.2rem; align-items: center; justify-content: center; border-radius: 999px; color: #06211f; background: #5eead4; font-size: .68rem; font-weight: 700; }
+.filter-trigger:hover, .filter-trigger-active { border-color: rgba(45,212,191,.4); color: #ccfbf1; background: rgba(20,184,166,.1); }
+.filter-select { padding: 0 .7rem; outline: none; }
+.filter-select option { background: #10252b; color: #ecfdf5; }
+.catalog-filter-input { width: 100%; padding: 0 .85rem; outline: none; }
+.catalog-filter-input:focus { border-color: #2dd4bf; }
+.catalog-filter-chip, .catalog-meta { display: inline-flex; align-items: center; border-radius: 999px; color: #a7c8c4; background: rgba(255,255,255,.045); border: 1px solid rgba(203,231,229,.08); font-size: .7rem; }
+.catalog-filter-chip { padding: .3rem .55rem; }
+.catalog-meta { padding: .22rem .45rem; font-size: .68rem; }
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15.5rem), 1fr)); gap: 1rem; }
+.catalog-card { display: flex; flex-direction: column; min-height: 21rem; padding: .8rem; border: 1px solid rgba(203,231,229,.09); border-radius: 1rem; background: rgba(16,37,43,.62); box-shadow: 0 12px 32px rgba(2,12,15,.11); transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease; }
+.catalog-card:hover { transform: translateY(-3px); border-color: rgba(45,212,191,.28); background: rgba(20,52,57,.84); }
+.catalog-card-action { display: inline-flex; min-height: 2.35rem; align-items: center; justify-content: center; gap: .4rem; border-radius: .65rem; color: #ccfbf1; background: rgba(20,184,166,.13); border: 1px solid rgba(45,212,191,.18); font-size: .78rem; font-weight: 650; transition: background-color 160ms ease; }
+.catalog-card-action:hover { background: rgba(20,184,166,.23); }
+.catalog-icon-action { display: inline-flex; width: 2.35rem; height: 2.35rem; align-items: center; justify-content: center; border: 1px solid rgba(203,231,229,.1); border-radius: .65rem; color: #9cbab7; background: rgba(255,255,255,.035); transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease; }
+.catalog-icon-action:hover { color: #ccfbf1; border-color: rgba(45,212,191,.27); background: rgba(20,184,166,.1); }
+.catalog-empty { grid-column: 1 / -1; display: flex; min-height: 16rem; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed rgba(203,231,229,.14); border-radius: 1rem; background: rgba(255,255,255,.02); text-align: center; }
+
 @media (max-width: 767px) {
   .auth-grid { display: block; width: min(100%, 30rem); margin-top: 2.8rem; }
   .auth-intro { display: none; }
@@ -204,6 +232,8 @@ body {
 .light .hero-console, .light .feature-card, .light .auth-card { background: rgba(255,255,255,.88); box-shadow: 0 22px 50px rgba(15, 118, 110, .1); }
 .light .auth-intro .text-white, .light .marketing-shell .text-white { color: #102a2e !important; }
 .light .auth-intro .text-slate-300, .light .marketing-shell .text-slate-300 { color: #456765 !important; }
+.light .catalog-card { background: rgba(255,255,255,.88); box-shadow: 0 10px 24px rgba(15,118,110,.08); }
+.light .filter-trigger, .light .filter-select, .light .catalog-filter-input { color: #335a57; background: #f8fffe; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
