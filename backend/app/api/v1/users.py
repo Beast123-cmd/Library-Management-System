@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from typing import Optional
 from app.db.database import get_db
 from app.core.security import get_password_hash
-from app.schemas.schemas import UserOut, PaginatedResponse, UserCreate, UserUpdate
+from app.schemas.schemas import NotificationPreferences, NotificationPreferencesUpdate, UserOut, PaginatedResponse, UserCreate, UserUpdate
 from app.models.models import User, UserRole, Transaction, TransactionStatus
 from app.core.dependencies import get_current_user, get_current_admin
 
@@ -15,6 +15,39 @@ router = APIRouter(prefix="/users", tags=["Users & Members"])
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get the current logged-in user's profile."""
     return current_user
+
+
+def notification_preferences(user: User) -> NotificationPreferences:
+    return NotificationPreferences(
+        due_reminders=user.notify_due,
+        overdue_alerts=user.notify_overdue,
+        hold_ready_alerts=user.notify_holds,
+    )
+
+
+@router.get("/me/notification-preferences", response_model=NotificationPreferences)
+async def get_notification_preferences(current_user: User = Depends(get_current_user)):
+    """Return the current member's in-app alert preferences."""
+    return notification_preferences(current_user)
+
+
+@router.patch("/me/notification-preferences", response_model=NotificationPreferences)
+async def update_notification_preferences(
+    payload: NotificationPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update only the alerts a member wants to see."""
+    fields = {
+        "due_reminders": "notify_due",
+        "overdue_alerts": "notify_overdue",
+        "hold_ready_alerts": "notify_holds",
+    }
+    for name, value in payload.model_dump(exclude_unset=True).items():
+        setattr(current_user, fields[name], value)
+    await db.commit()
+    await db.refresh(current_user)
+    return notification_preferences(current_user)
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -158,5 +191,4 @@ async def toggle_member_active(
     await db.commit()
     await db.refresh(user)
     return user
-
 

@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, BookOpen, ArrowLeftRight,
-  Users, BarChart3, LogOut, BookMarked, ChevronLeft, ChevronRight, Sun, Moon, Bookmark
+  Users, BarChart3, LogOut, BookMarked, ChevronLeft, ChevronRight, Sun, Moon, Bookmark, Settings
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/dashboard/holds",        label: "Holds & Pull List", icon: Bookmark, adminOnly: true },
   { href: "/dashboard/members",      label: "Members",       icon: Users, adminOnly: true },
   { href: "/dashboard/analytics",    label: "Analytics",     icon: BarChart3, adminOnly: true },
+  { href: "/dashboard/profile",      label: "Profile & Alerts", icon: Settings },
 ];
 
 export default function Sidebar() {

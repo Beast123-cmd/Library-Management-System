@@ -41,6 +41,9 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(SAEnum(UserRole, native_enum=False), default=UserRole.member, nullable=False)
     is_active = Column(Boolean, default=True)
+    notify_due = Column(Boolean, default=True, nullable=False)
+    notify_overdue = Column(Boolean, default=True, nullable=False)
+    notify_holds = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

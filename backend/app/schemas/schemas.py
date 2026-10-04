@@ -50,6 +50,18 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class NotificationPreferences(BaseModel):
+    due_reminders: bool
+    overdue_alerts: bool
+    hold_ready_alerts: bool
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    due_reminders: Optional[bool] = None
+    overdue_alerts: Optional[bool] = None
+    hold_ready_alerts: Optional[bool] = None
+
+
 # ==============================================================================
 # BOOK SCHEMAS
 # ==============================================================================

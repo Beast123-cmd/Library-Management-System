@@ -29,6 +29,9 @@ async def migrate():
             "CREATE INDEX IF NOT EXISTS ix_books_shelf_location ON books (shelf_location)",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS copy_id INTEGER REFERENCES book_copies(id)",
             "CREATE INDEX IF NOT EXISTS ix_transactions_copy_id ON transactions (copy_id)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_due BOOLEAN NOT NULL DEFAULT TRUE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_overdue BOOLEAN NOT NULL DEFAULT TRUE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_holds BOOLEAN NOT NULL DEFAULT TRUE",
         ):
             await conn.execute(text(statement))
     sessions = async_sessionmaker(engine, expire_on_commit=False)

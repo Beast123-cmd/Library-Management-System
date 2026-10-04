@@ -37,7 +37,7 @@ function MemberDashboard({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const { data: txns } = useQuery({
     queryKey: ["member-txns-summary"],
-    queryFn: () => api.get("/transactions/?page=1&per_page=10").then(r => r.data),
+    queryFn: () => api.get("/transactions/?page=1&per_page=100").then(r => r.data),
   });
 
   const { data: books } = useQuery({
@@ -52,6 +52,10 @@ function MemberDashboard({ user }: { user: any }) {
 
   const activeTxns = txns?.data?.filter((t: any) => t.status === "issued") || [];
   const overdueTxns = activeTxns.filter((t: any) => new Date(t.expected_return_date) < new Date());
+  const estimatedFine = overdueTxns.reduce((total: number, txn: any) => {
+    const days = Math.ceil((Date.now() - new Date(`${txn.expected_return_date}T00:00:00`).getTime()) / 86_400_000);
+    return total + (days <= 15 ? days * 5 : 75 + (days - 15) * 50);
+  }, 0);
 
   const handleCancelHold = async (holdId: number) => {
     try {
@@ -75,9 +79,10 @@ function MemberDashboard({ user }: { user: any }) {
       </motion.div>
 
       {/* Quick Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard icon={BookOpen} label="Active Loans" value={activeTxns.length} color="bg-indigo-600" index={0} />
         <StatCard icon={AlertCircle} label="Overdue Books" value={overdueTxns.length} color={overdueTxns.length > 0 ? "bg-red-600" : "bg-emerald-600"} index={1} />
+        <StatCard icon={DollarSign} label="Estimated Fine" value={`₹${estimatedFine}`} color={estimatedFine > 0 ? "bg-red-600" : "bg-emerald-600"} index={2} />
       </div>
 
       {/* Your Holds Section */}
@@ -141,7 +146,9 @@ function MemberDashboard({ user }: { user: any }) {
                 <div>
                   <h3 className="text-white font-bold text-sm leading-tight line-clamp-2">{book.title}</h3>
                   <p className="text-slate-400 text-xs mt-1">{book.author}</p>
+                  {(book.category || book.language) && <p className="text-indigo-300 text-xs mt-2">{[book.category, book.language].filter(Boolean).join(" · ")}</p>}
                 </div>
+                <p className={`text-xs mt-3 ${book.available_copies > 0 ? "text-emerald-400" : "text-red-400"}`}>{book.available_copies > 0 ? `${book.available_copies} available now` : "Currently unavailable"}</p>
                 <a href="/dashboard/books" className="mt-4 block w-full text-center py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-semibold hover:bg-indigo-600/40 transition-colors">
                   View Details
                 </a>
@@ -176,6 +183,7 @@ function MemberDashboard({ user }: { user: any }) {
                 </div>
                 <div className="text-right">
                   <p className="text-slate-400 text-xs">Due: {txn.expected_return_date}</p>
+                  {txn.fine_amount > 0 && <p className="text-red-400 text-xs mt-1">Fine: ₹{txn.fine_amount}</p>}
                 </div>
              </div>
           ))}
