@@ -1,14 +1,72 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from app.db.database import get_db
-from app.models.models import Book, User, Transaction, TransactionStatus, UserRole
-from app.core.dependencies import get_current_user
+from app.models.models import Book, HoldQueue, HoldQueueStatus, User, Transaction, TransactionStatus, UserRole
+from app.core.dependencies import get_current_admin, get_current_user
 from app.schemas.schemas import TransactionOut, BookOut
 from typing import Dict, Any, List
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+
+def work_item(transaction: Transaction) -> dict[str, object]:
+    return {
+        "transaction_id": transaction.id,
+        "member_name": transaction.user.name if transaction.user else "Unknown member",
+        "book_title": transaction.book.title if transaction.book else "Unknown book",
+        "due_date": str(transaction.expected_return_date),
+    }
+
+
+@router.get("/work-queue", response_model=Dict[str, Any])
+async def get_work_queue(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Return the small, time-sensitive circulation queue for library staff."""
+    today = date.today()
+    loan_options = (selectinload(Transaction.user), selectinload(Transaction.book))
+
+    due_today = (await db.execute(
+        select(Transaction)
+        .options(*loan_options)
+        .where(Transaction.status == TransactionStatus.issued, Transaction.expected_return_date == today)
+        .order_by(Transaction.id)
+        .limit(8)
+    )).scalars().all()
+    overdue = (await db.execute(
+        select(Transaction)
+        .options(*loan_options)
+        .where(Transaction.status == TransactionStatus.issued, Transaction.expected_return_date < today)
+        .order_by(Transaction.expected_return_date, Transaction.id)
+        .limit(8)
+    )).scalars().all()
+    ready_for_pickup = (await db.execute(
+        select(HoldQueue)
+        .options(selectinload(HoldQueue.user), selectinload(HoldQueue.book))
+        .where(HoldQueue.status == HoldQueueStatus.active)
+        .order_by(HoldQueue.expiration_date, HoldQueue.id)
+        .limit(8)
+    )).scalars().all()
+
+    return {
+        "date": str(today),
+        "due_today": [work_item(transaction) for transaction in due_today],
+        "overdue": [work_item(transaction) for transaction in overdue],
+        "ready_for_pickup": [
+            {
+                "hold_id": hold.id,
+                "member_name": hold.user.name if hold.user else "Unknown member",
+                "book_title": hold.book.title if hold.book else "Unknown book",
+                "expires_at": hold.expiration_date.isoformat() if hold.expiration_date else None,
+            }
+            for hold in ready_for_pickup
+        ],
+    }
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_dashboard_stats(

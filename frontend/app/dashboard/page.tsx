@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle, Clock, TrendingUp, Bookmark } from "lucide-react";
+import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle, CalendarDays, Clock, TrendingUp, Bookmark } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -206,6 +206,12 @@ export default function DashboardPage() {
     enabled: isAdmin,
   });
 
+  const { data: workQueue } = useQuery({
+    queryKey: ["staff-work-queue"],
+    queryFn: () => api.get("/dashboard/work-queue").then(r => r.data),
+    enabled: isAdmin,
+  });
+
   if (user && !isAdmin) {
     return <MemberDashboard user={user} />;
   }
@@ -234,6 +240,28 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
       </div>
+
+      <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+          <div>
+            <h2 className="text-white font-semibold flex items-center gap-2"><CalendarDays size={18} className="text-indigo-400" /> Today&apos;s circulation</h2>
+            <p className="text-slate-400 text-xs mt-1">Focus on the loans and pickups that need action first.</p>
+          </div>
+          <Link href="/dashboard/transactions" className="text-sm font-medium text-indigo-400 hover:text-indigo-300">Open circulation desk →</Link>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {[
+            { label: "Due today", items: workQueue?.due_today, href: "/dashboard/transactions", tone: "text-amber-400", detail: (item: any) => `Due ${item.due_date}` },
+            { label: "Overdue", items: workQueue?.overdue, href: "/dashboard/transactions", tone: "text-red-400", detail: (item: any) => `Due ${item.due_date}` },
+            { label: "Ready for pickup", items: workQueue?.ready_for_pickup, href: "/dashboard/holds", tone: "text-emerald-400", detail: (item: any) => item.expires_at ? `Until ${new Date(item.expires_at).toLocaleString()}` : "Awaiting collection" },
+          ].map(({ label, items, href, tone, detail }) => (
+            <Link key={label} href={href} className="rounded-2xl border border-white/5 bg-white/3 p-4 hover:bg-white/5 hover:border-indigo-500/30 transition-colors">
+              <div className="flex items-center justify-between mb-3"><span className="text-sm font-semibold text-white">{label}</span><span className={`text-sm font-bold ${tone}`}>{items?.length ?? "—"}</span></div>
+              {items?.length ? <div className="space-y-2">{items.slice(0, 2).map((item: any) => <div key={item.transaction_id ?? item.hold_id} className="min-w-0"><p className="truncate text-sm text-slate-200">{item.book_title}</p><p className="truncate text-xs text-slate-500">{item.member_name} · {detail(item)}</p></div>)}</div> : <p className="text-sm text-slate-500">Nothing in this queue.</p>}
+            </Link>
+          ))}
+        </div>
+      </motion.section>
 
       {/* Low Stock Warning Banner for Admin */}
       {isAdmin && stats?.low_stock_books?.length > 0 && (

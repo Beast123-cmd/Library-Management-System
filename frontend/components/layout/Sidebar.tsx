@@ -34,11 +34,11 @@ export default function Sidebar() {
       animate={{ width: collapsed ? 72 : 240 }}
       transition={{ duration: 0.3, ease: "easeInOut" }}
       className="relative flex flex-col h-screen shrink-0 overflow-hidden"
-      style={{ background: "var(--sidebar-bg, rgba(26,29,46,0.95))", borderRight: "1px solid var(--border)" }}
+      style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)" }}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-6 border-b border-white/5">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-950/30">
           <BookMarked size={18} className="text-white" />
         </div>
         {!collapsed && (
@@ -46,7 +46,7 @@ export default function Sidebar() {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
             className="font-bold text-white text-sm tracking-wide"
           >
-            LibrarySaaS
+            Library Desk
           </motion.span>
         )}
       </div>

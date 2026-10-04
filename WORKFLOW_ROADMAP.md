@@ -19,7 +19,9 @@ This tracks the day-to-day library improvements discussed in the recent project 
 2. **Catalog and member portal:**
    - [x] Catalog filters, richer recommendation cards, and loan and fine details.
    - [x] Saved member alert preferences.
-3. **Staff tools:** today’s due/overdue/pickup work, CSV exports, audit activity, and archive instead of deleting records in use.
+3. **Staff tools:**
+   - [x] Dashboard queue for today’s due loans, overdue loans, and ready pickups.
+   - [ ] CSV exports, audit activity, and archive instead of deleting records in use.
 4. **Notifications:** in-app due, overdue, ready-for-pickup, and expiring-hold notices before email delivery.
 5. **Security and polish:** secure cookie sessions, account recovery, clear permission/error pages, accessibility, mobile layout, and truthful analytics empty states.
 
