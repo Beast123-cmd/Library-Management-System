@@ -74,10 +74,14 @@ async def main():
             print("Catalog expansion already exists; no changes made.")
             return
 
+        catalog_isbns = [isbn for _, _, isbn, *_ in CATALOG]
+        existing_isbns = set(
+            (await db.execute(select(Book.isbn).where(Book.isbn.in_(catalog_isbns)))).scalars()
+        )
         inserted = 0
         copies_added = 0
         for title, author, isbn, year, category, publisher, shelf in CATALOG:
-            if (await db.execute(select(Book.id).where(Book.isbn == isbn))).scalar_one_or_none():
+            if isbn in existing_isbns:
                 continue
             book = Book(
                 title=title, author=author, isbn=isbn, publish_year=year,
