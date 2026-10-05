@@ -13,19 +13,19 @@ const libraryNav = [
   { href: "/dashboard/books", label: "Catalog", icon: BookOpen },
   { href: "/dashboard/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/dashboard/requests", label: "Book requests", icon: Send },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 const staffNav = [
   { href: "/dashboard/holds", label: "Holds & pickup", icon: Bookmark },
   { href: "/dashboard/inventory", label: "Inventory audit", icon: ClipboardCheck },
   { href: "/dashboard/fines", label: "Fines", icon: CircleDollarSign },
   { href: "/dashboard/members", label: "Members", icon: Users },
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 function NavLinks({ items, pathname, collapsed, close, member }: { items: typeof libraryNav; pathname: string; collapsed?: boolean; close?: () => void; member: boolean }) {
   return <div className="space-y-1">{items.map(({ href, label, icon: Icon }) => {
     const active = pathname === href || pathname.startsWith(`${href}/`);
-    const resolvedLabel = member && href === "/dashboard/transactions" ? "My loans" : label;
+    const resolvedLabel = member && href === "/dashboard/transactions" ? "My loans" : member && href === "/dashboard/analytics" ? "My insights" : label;
     return <Link key={href} href={href} onClick={close} title={collapsed ? resolvedLabel : undefined} className={cn("group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors", active ? "bg-indigo-600/20 text-indigo-200" : "text-slate-400 hover:bg-white/5 hover:text-white")}><Icon size={18} className="shrink-0" />{!collapsed && <span className="font-medium">{resolvedLabel}</span>}{active && <span className="absolute left-0 h-5 w-0.5 rounded-r-full bg-teal-300" />}</Link>;
   })}</div>;
 }

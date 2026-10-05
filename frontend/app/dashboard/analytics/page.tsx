@@ -5,7 +5,6 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { ShieldAlert } from "lucide-react";
 
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
@@ -56,13 +55,7 @@ export default function AnalyticsPage() {
   const chartTopBooksData = analyticsStats?.topBooksData || [];
 
   if (!isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center space-y-4">
-        <ShieldAlert className="text-red-500" size={48} />
-        <h1 className="text-xl font-bold text-white">Access Denied</h1>
-        <p className="text-slate-400 max-w-md">Only librarians and administrators have access to the platform analytics dashboard.</p>
-      </div>
-    );
+    return <MemberAnalytics />;
   }
 
   return (
@@ -214,4 +207,27 @@ export default function AnalyticsPage() {
       </div>
     </div>
   );
+}
+
+function MemberAnalytics() {
+  const { data: transactions, isLoading } = useQuery({
+    queryKey: ["member-reading-insights"],
+    queryFn: () => api.get("/transactions/?page=1&per_page=100").then(response => response.data),
+  });
+  const loans = transactions?.data || [];
+  const active = loans.filter((loan: any) => loan.status === "issued" || loan.status === "overdue");
+  const returned = loans.filter((loan: any) => loan.status === "returned");
+  const totalFines = loans.reduce((total: number, loan: any) => total + Number(loan.fine_amount || 0), 0);
+  const categoryCounts = loans.reduce((counts: Record<string, number>, loan: any) => {
+    const category = loan.book?.category || "Other";
+    counts[category] = (counts[category] || 0) + 1;
+    return counts;
+  }, {});
+  const chartData = Object.entries(categoryCounts).map(([name, count]) => ({ name, count }));
+
+  return <div className="space-y-8"><header><h1 className="flex items-center gap-2 text-2xl font-bold text-white"><BarChart3 className="text-indigo-400" size={26} /> My reading insights</h1><p className="mt-1 text-sm text-slate-400">Your loans, reading history, and borrowing patterns.</p></header><div className="grid gap-4 sm:grid-cols-3"><Insight label="Books borrowed" value={isLoading ? "—" : loans.length} icon={BookOpen} tone="text-indigo-200" /><Insight label="Active loans" value={isLoading ? "—" : active.length} icon={ArrowLeftRight} tone="text-amber-300" /><Insight label="Fines recorded" value={isLoading ? "—" : `₹${totalFines.toFixed(2)}`} icon={Activity} tone="text-rose-300" /></div><section className="glass p-5 sm:p-6"><div className="mb-5"><h2 className="font-semibold text-white">Your reading categories</h2><p className="mt-1 text-sm text-slate-400">Based on books you have borrowed.</p></div>{chartData.length ? <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} /><YAxis allowDecimals={false} stroke="#94a3b8" fontSize={11} tickLine={false} /><Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px" }} /><Bar dataKey="count" fill="#6366f1" radius={[8, 8, 0, 0]} name="Books" /></BarChart></ResponsiveContainer></div> : <p className="py-12 text-center text-sm text-slate-400">Borrow a book to start seeing your reading insights.</p>}</section><section className="glass p-5 sm:p-6"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold text-white">Reading activity</h2><span className="text-sm text-slate-400">{returned.length} returned</span></div><div className="divide-y divide-white/5">{active.length ? active.map((loan: any) => <div key={loan.id} className="flex items-center justify-between py-3 first:pt-0"><div><p className="text-sm font-medium text-white">{loan.book?.title || "Library book"}</p><p className="mt-1 text-xs text-slate-400">Due {loan.expected_return_date}</p></div><span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">On loan</span></div>) : <p className="py-5 text-sm text-slate-400">No books are currently on loan.</p>}</div></section></div>;
+}
+
+function Insight({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: typeof BookOpen; tone: string }) {
+  return <div className="glass flex items-center justify-between p-5"><div><p className="text-sm text-slate-400">{label}</p><p className={`mt-2 text-2xl font-bold ${tone}`}>{value}</p></div><Icon className="text-slate-500" size={22} /></div>;
 }
