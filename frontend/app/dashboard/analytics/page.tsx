@@ -7,31 +7,6 @@ import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ShieldAlert } from "lucide-react";
 
-// Mock trend data that looks premium and realistic
-const mockTrendData = [
-  { name: "Jan", issues: 45, returns: 32 },
-  { name: "Feb", issues: 58, returns: 40 },
-  { name: "Mar", issues: 72, returns: 55 },
-  { name: "Apr", issues: 90, returns: 68 },
-  { name: "May", issues: 110, returns: 85 },
-  { name: "Jun", issues: 125, returns: 102 },
-];
-
-const mockCategoryData = [
-  { name: "Fiction", value: 40, color: "#6366f1" },
-  { name: "Science & Tech", value: 30, color: "#a855f7" },
-  { name: "History", value: 15, color: "#06b6d4" },
-  { name: "Biography", value: 15, color: "#10b981" },
-];
-
-const mockTopBooksData = [
-  { name: "1984", count: 28 },
-  { name: "The Alchemist", count: 22 },
-  { name: "Atomic Habits", count: 19 },
-  { name: "Clean Code", count: 15 },
-  { name: "The Great Gatsby", count: 12 },
-];
-
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
 
@@ -74,17 +49,9 @@ export default function AnalyticsPage() {
     enabled: isAdmin,
   });
 
-  const chartTrendData = analyticsStats?.transactionTrendData?.length
-    ? analyticsStats.transactionTrendData
-    : mockTrendData;
-
-  const chartCategoryData = analyticsStats?.categoryData?.length
-    ? analyticsStats.categoryData
-    : mockCategoryData;
-
-  const chartTopBooksData = analyticsStats?.topBooksData?.length
-    ? analyticsStats.topBooksData
-    : mockTopBooksData;
+  const chartTrendData = analyticsStats?.transactionTrendData || [];
+  const chartCategoryData = analyticsStats?.categoryData || [];
+  const chartTopBooksData = analyticsStats?.topBooksData || [];
 
   if (!isAdmin) {
     return (
@@ -107,9 +74,9 @@ export default function AnalyticsPage() {
       {/* Grid Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: "Total Book Titles", value: books?.total || 10, icon: BookOpen, color: "from-indigo-500/20 to-indigo-600/5", border: "border-indigo-500/20" },
-          { label: "Total Transactions", value: transactions?.total || 4, icon: ArrowLeftRight, color: "from-purple-500/20 to-purple-600/5", border: "border-purple-500/20" },
-          { label: "Registered Members", value: members?.total || 1, icon: Users, color: "from-cyan-500/20 to-cyan-600/5", border: "border-cyan-500/20" },
+          { label: "Total Book Titles", value: books?.total ?? "—", icon: BookOpen, color: "from-indigo-500/20 to-indigo-600/5", border: "border-indigo-500/20" },
+          { label: "Total Transactions", value: transactions?.total ?? "—", icon: ArrowLeftRight, color: "from-purple-500/20 to-purple-600/5", border: "border-purple-500/20" },
+          { label: "Registered Members", value: members?.total ?? "—", icon: Users, color: "from-cyan-500/20 to-cyan-600/5", border: "border-cyan-500/20" },
         ].map((item, idx) => (
           <motion.div
             key={idx}
