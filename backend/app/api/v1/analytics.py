@@ -1,12 +1,12 @@
 import csv
 import io
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.db.database import get_db
-from app.models.models import Book, Transaction, User
+from app.models.models import Book, FinePayment, Transaction, TransactionStatus, User
 from app.core.dependencies import get_current_admin
 import datetime
 from calendar import month_abbr
@@ -105,4 +105,54 @@ async def export_analytics(
     return StreamingResponse(
         iter([output.getvalue()]), media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="library-analytics-report.csv"'},
+    )
+
+
+@router.get("/export/{report_type}")
+async def export_operational_report(
+    report_type: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Download the three operational reports staff use day to day."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    today = datetime.date.today()
+
+    if report_type == "overdue":
+        writer.writerow(["transaction_id", "member", "email", "book", "due_date", "days_overdue", "estimated_fine"])
+        rows = (await db.execute(
+            select(Transaction, User.name, User.email, Book.title)
+            .join(User, Transaction.user_id == User.id).join(Book, Transaction.book_id == Book.id)
+            .where(Transaction.status.in_([TransactionStatus.issued, TransactionStatus.overdue]), Transaction.expected_return_date < today)
+            .order_by(Transaction.expected_return_date)
+        )).all()
+        for transaction, name, email, title in rows:
+            days = (today - transaction.expected_return_date).days
+            fine = days * 5 if days <= 15 else 75 + (days - 15) * 50
+            writer.writerow([transaction.id, name, email, title, transaction.expected_return_date, days, f"{fine:.2f}"])
+    elif report_type == "fines":
+        writer.writerow(["transaction_id", "member", "book", "assessed_amount", "paid_amount", "outstanding_amount", "received_at", "note"])
+        rows = (await db.execute(
+            select(Transaction, User.name, Book.title, FinePayment)
+            .join(User, Transaction.user_id == User.id).join(Book, Transaction.book_id == Book.id)
+            .outerjoin(FinePayment, FinePayment.transaction_id == Transaction.id)
+            .where(Transaction.status == TransactionStatus.returned, Transaction.fine_amount > 0)
+            .order_by(Transaction.actual_return_date.desc())
+        )).all()
+        for transaction, name, title, payment in rows:
+            paid = payment.amount if payment else 0.0
+            writer.writerow([transaction.id, name, title, f"{transaction.fine_amount:.2f}", f"{paid:.2f}", f"{transaction.fine_amount - paid:.2f}", payment.received_at if payment else "", payment.note if payment else ""])
+    elif report_type == "inventory":
+        writer.writerow(["book_id", "title", "author", "category", "shelf_location", "total_copies", "available_copies", "availability"])
+        rows = (await db.execute(select(Book).order_by(Book.title))).scalars().all()
+        for book in rows:
+            availability = "out of stock" if book.available_copies == 0 else "low stock" if book.available_copies <= 2 else "available"
+            writer.writerow([book.id, book.title, book.author, book.category or "", book.shelf_location or "", book.total_copies, book.available_copies, availability])
+    else:
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    return StreamingResponse(
+        iter([output.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="library-{report_type}-report.csv"'},
     )

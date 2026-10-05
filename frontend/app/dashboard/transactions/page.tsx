@@ -57,6 +57,11 @@ export default function TransactionsPage() {
     placeholderData: keepPreviousData,
     enabled: !!user,
   });
+  const { data: fineRecords = [], refetch: refetchFines } = useQuery({
+    queryKey: ["fine-records"],
+    queryFn: () => api.get("/transactions/fines").then(r => r.data),
+    enabled: isAdmin,
+  });
 
   const [returnTxn, setReturnTxn] = useState<any>(null);
   const [returnStep, setReturnStep] = useState(1);
@@ -65,6 +70,7 @@ export default function TransactionsPage() {
   const [receipt, setReceipt] = useState<ReturnReceipt | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [renewingId, setRenewingId] = useState<number | null>(null);
+  const [collectingFineId, setCollectingFineId] = useState<number | null>(null);
 
   const handleRenew = async (txnId: number) => {
     setRenewingId(txnId);
@@ -131,6 +137,19 @@ export default function TransactionsPage() {
       setReceipt(savedReceipt);
     } catch {
       toast.error("Could not load the return receipt.");
+    }
+  };
+
+  const collectFine = async (transactionId: number, outstanding: number) => {
+    setCollectingFineId(transactionId);
+    try {
+      await api.post(`/transactions/${transactionId}/fine-payment`, { amount: outstanding });
+      toast.success(`₹${outstanding.toFixed(2)} payment recorded.`);
+      refetchFines();
+    } catch (error: unknown) {
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.detail || "Could not record this payment." : "Could not record this payment.");
+    } finally {
+      setCollectingFineId(null);
     }
   };
 
@@ -215,6 +234,8 @@ export default function TransactionsPage() {
                 const { label, badge } = getStatusInfo(txn);
                 const estimatedFine = txn.status === "issued" ? calculateFineClient(txn.expected_return_date).fine : 0;
                 const dueDateHasNotPassed = new Date(`${txn.expected_return_date}T23:59:59`) >= new Date();
+                const fineRecord = fineRecords.find((record: any) => record.transaction_id === txn.id);
+                const outstandingFine = fineRecord?.outstanding_amount ?? txn.fine_amount;
                 return (
                   <tr key={txn.id} className="border-b border-white/5 hover:bg-white/3 transition-colors group">
                     <td className="px-6 py-4 text-slate-500 text-sm">#{txn.id}</td>
@@ -258,9 +279,7 @@ export default function TransactionsPage() {
                           </button>
                         )}
                         {txn.status === "returned" && (
-                          <button onClick={() => handleViewReceipt(txn.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10">
-                            View Receipt
-                          </button>
+                          <div className="flex items-center gap-2"><button onClick={() => handleViewReceipt(txn.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/10">View Receipt</button>{txn.fine_amount > 0 && outstandingFine > 0 && <button disabled={collectingFineId === txn.id} onClick={() => collectFine(txn.id, outstandingFine)} className="text-xs font-medium text-teal-300 hover:text-teal-100 disabled:opacity-50">{collectingFineId === txn.id ? "Recording…" : `Collect ₹${outstandingFine.toFixed(2)}`}</button>}{txn.fine_amount > 0 && outstandingFine === 0 && <span className="text-xs text-emerald-300">Paid</span>}</div>
                         )}
                       </td>
                     )}

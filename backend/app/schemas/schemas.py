@@ -181,6 +181,22 @@ class ReturnReceipt(TransactionOut):
     waiver_reason: Optional[str] = None
 
 
+class FinePaymentCreate(BaseModel):
+    amount: float = Field(..., gt=0)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class FineRecordOut(BaseModel):
+    transaction_id: int
+    member_name: str
+    book_title: str
+    assessed_amount: float
+    paid_amount: float
+    outstanding_amount: float
+    paid_at: Optional[datetime] = None
+    note: Optional[str] = None
+
+
 # ==============================================================================
 # HOLD QUEUE SCHEMAS
 # ==============================================================================

@@ -114,6 +114,21 @@ class Transaction(Base):
     user = relationship("User", back_populates="transactions")
     book = relationship("Book", back_populates="transactions")
     copy = relationship("BookCopy", back_populates="transactions")
+    fine_payment = relationship("FinePayment", back_populates="transaction", uselist=False, cascade="all, delete-orphan")
+
+
+class FinePayment(Base):
+    __tablename__ = "fine_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), unique=True, nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    note = Column(String(500), nullable=True)
+    received_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    transaction = relationship("Transaction", back_populates="fine_payment")
+    received_by = relationship("User")
 
 
 # ==============================================================================

@@ -6,8 +6,8 @@ from sqlalchemy import select, func
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from app.db.database import get_db
-from app.models.models import AuditLog, Transaction, Book, BookCopy, CopyStatus, User, TransactionStatus, HoldQueue, HoldQueueStatus
-from app.schemas.schemas import TransactionCreate, TransactionOut, PaginatedResponse, ReturnRequest, ReturnReceipt
+from app.models.models import AuditLog, FinePayment, Transaction, Book, BookCopy, CopyStatus, User, TransactionStatus, HoldQueue, HoldQueueStatus
+from app.schemas.schemas import FinePaymentCreate, FineRecordOut, TransactionCreate, TransactionOut, PaginatedResponse, ReturnRequest, ReturnReceipt
 from app.core.dependencies import get_current_user, get_current_admin
 from app.core.holds import HOLD_DURATION, release_expired_holds
 from app.core.copies import available_copy
@@ -229,6 +229,76 @@ async def issue_book(
     )
     result = await db.execute(stmt)
     return result.scalar_one()
+
+
+@router.get("/fines", response_model=list[FineRecordOut])
+async def list_fines(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Show charged fines and their payment state to staff."""
+    rows = (await db.execute(
+        select(Transaction, User.name, Book.title, FinePayment)
+        .join(User, Transaction.user_id == User.id)
+        .join(Book, Transaction.book_id == Book.id)
+        .outerjoin(FinePayment, FinePayment.transaction_id == Transaction.id)
+        .where(Transaction.status == TransactionStatus.returned, Transaction.fine_amount > 0)
+        .order_by(Transaction.actual_return_date.desc(), Transaction.id.desc())
+    )).all()
+    return [FineRecordOut(
+        transaction_id=transaction.id,
+        member_name=member_name,
+        book_title=book_title,
+        assessed_amount=transaction.fine_amount,
+        paid_amount=payment.amount if payment else 0.0,
+        outstanding_amount=round(transaction.fine_amount - (payment.amount if payment else 0.0), 2),
+        paid_at=payment.received_at if payment else None,
+        note=payment.note if payment else None,
+    ) for transaction, member_name, book_title, payment in rows]
+
+
+@router.post("/{txn_id}/fine-payment", response_model=FineRecordOut)
+async def record_fine_payment(
+    txn_id: int,
+    payload: FinePaymentCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Record one payment against a returned loan's assessed fine."""
+    transaction = (await db.execute(
+        select(Transaction)
+        .where(Transaction.id == txn_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if transaction is None or transaction.status != TransactionStatus.returned or transaction.fine_amount <= 0:
+        raise HTTPException(status_code=404, detail="Fine record not found.")
+    payment = (await db.execute(
+        select(FinePayment).where(FinePayment.transaction_id == txn_id).with_for_update()
+    )).scalar_one_or_none()
+    paid_amount = payment.amount if payment else 0.0
+    outstanding = round(transaction.fine_amount - paid_amount, 2)
+    if payload.amount > outstanding:
+        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the outstanding ₹{outstanding:.2f}.")
+    if payment:
+        payment.amount = round(payment.amount + payload.amount, 2)
+        payment.note = payload.note or payment.note
+    else:
+        payment = FinePayment(transaction_id=txn_id, amount=round(payload.amount, 2), note=payload.note, received_by_id=admin.id)
+        db.add(payment)
+    db.add(AuditLog(
+        admin_id=admin.id, action="fine_payment_recorded", resource="transaction", resource_id=txn_id,
+        details=json.dumps({"amount": payload.amount, "note": payload.note}),
+    ))
+    await db.commit()
+    await db.refresh(payment)
+    member = await db.get(User, transaction.user_id)
+    book = await db.get(Book, transaction.book_id)
+    return FineRecordOut(
+        transaction_id=transaction.id, member_name=member.name, book_title=book.title,
+        assessed_amount=transaction.fine_amount, paid_amount=payment.amount,
+        outstanding_amount=round(transaction.fine_amount - payment.amount, 2),
+        paid_at=payment.received_at, note=payment.note,
+    )
 
 
 

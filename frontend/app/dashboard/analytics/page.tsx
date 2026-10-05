@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { BarChart3, TrendingUp, BookOpen, Users, Activity, ArrowLeftRight, Download } from "lucide-react";
+import { BarChart3, TrendingUp, BookOpen, Users, Activity, ArrowLeftRight, Download, AlertTriangle, CircleDollarSign, PackageCheck } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -10,19 +10,21 @@ import { ShieldAlert } from "lucide-react";
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
 
-  const exportReport = async () => {
+  const downloadReport = async (path: string, filename: string) => {
     try {
-      const response = await api.get("/analytics/export", { responseType: "blob" });
+      const response = await api.get(path, { responseType: "blob" });
       const url = URL.createObjectURL(response.data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "library-analytics-report.csv";
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
     } catch {
-      window.alert("The analytics report could not be downloaded. Please try again.");
+      window.alert("The report could not be downloaded. Please try again.");
     }
   };
+
+  const exportReport = () => downloadReport("/analytics/export", "library-analytics-report.csv");
 
   // Queries to show actual counts on stats cards
   const { data: books } = useQuery({
@@ -95,6 +97,21 @@ export default function AnalyticsPage() {
           </motion.div>
         ))}
       </div>
+
+      <section className="glass p-5 sm:p-6">
+        <div className="mb-5"><h2 className="text-base font-semibold text-white">Operational reports</h2><p className="mt-1 text-sm text-slate-400">Download the lists staff need for follow-up, payment collection, and shelf checks.</p></div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            { label: "Overdue loans", detail: "Members and expected fines", icon: AlertTriangle, path: "/analytics/export/overdue", file: "library-overdue-report.csv", tone: "text-amber-300" },
+            { label: "Fine ledger", detail: "Assessed, paid, and outstanding", icon: CircleDollarSign, path: "/analytics/export/fines", file: "library-fines-report.csv", tone: "text-rose-300" },
+            { label: "Inventory availability", detail: "Copies and shelf locations", icon: PackageCheck, path: "/analytics/export/inventory", file: "library-inventory-report.csv", tone: "text-teal-300" },
+          ].map(({ label, detail, icon: Icon, path, file, tone }) => (
+            <button key={label} type="button" onClick={() => downloadReport(path, file)} className="group flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.025] p-4 text-left transition-colors hover:border-teal-300/25 hover:bg-white/[0.06]">
+              <span className={`rounded-xl bg-white/5 p-2.5 ${tone}`}><Icon size={18} /></span><span className="min-w-0 flex-1"><span className="block font-semibold text-white">{label}</span><span className="mt-0.5 block text-xs text-slate-400">{detail}</span></span><Download size={16} className="text-slate-500 transition-colors group-hover:text-teal-200" />
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
