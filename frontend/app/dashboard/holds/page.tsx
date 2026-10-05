@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import axios from "axios";
 import { Bookmark, Search, User as UserIcon, Book as BookIcon, CalendarDays } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ export default function HoldsPage() {
   const [collectingId, setCollectingId] = useState<number | null>(null);
   const [loanWindows, setLoanWindows] = useState<Record<number, string>>({});
   const [customDueDates, setCustomDueDates] = useState<Record<number, string>>({});
+  const customDateRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const dateAfter = (days: number) => {
     const value = new Date();
@@ -22,6 +23,11 @@ export default function HoldsPage() {
   };
   const earliestDueDate = dateAfter(1);
   const latestDueDate = dateAfter(90);
+  const openCustomDatePicker = (holdId: number) => {
+    const input = customDateRefs.current[holdId];
+    if (!input) return;
+    try { input.showPicker(); } catch { input.focus(); }
+  };
 
   const { data: holds, isLoading, refetch } = useQuery({
     queryKey: ["all-holds"],
@@ -168,8 +174,8 @@ export default function HoldsPage() {
                     <td className="p-4 min-w-[15rem]">
                       <div className="space-y-2">
                         <div className="flex gap-2"><select value={loanWindows[hold.id] || "14"} onChange={event => setLoanWindows(current => ({ ...current, [hold.id]: event.target.value }))} aria-label={`Loan duration for ${hold.book?.title}`} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900/70 px-2 py-2 text-xs text-white focus:border-indigo-400 focus:outline-none"><option value="7">7-day loan</option><option value="14">14-day loan</option><option value="21">21-day loan</option><option value="30">30-day loan</option><option value="custom">Custom date</option></select><button onClick={() => handleCollect(hold)} disabled={collectingId !== null} className="shrink-0 rounded-lg bg-indigo-600/20 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/40 disabled:opacity-50">{collectingId === hold.id ? "Issuing…" : "Collect"}</button></div>
-                        {(loanWindows[hold.id] || "14") === "custom" && <label className="flex items-center gap-2 text-xs text-slate-400"><CalendarDays size={14} /><input type="date" min={earliestDueDate} max={latestDueDate} value={customDueDates[hold.id] || ""} onChange={event => setCustomDueDates(current => ({ ...current, [hold.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900/70 px-2 py-1.5 text-xs text-white focus:border-indigo-400 focus:outline-none" /></label>}
-                        <p className="text-[11px] text-slate-500">{(loanWindows[hold.id] || "14") === "custom" ? "Choose a date in the next 90 days." : `Due ${new Date(`${dateAfter(Number(loanWindows[hold.id] || "14"))}T00:00:00`).toLocaleDateString()}`}</p>
+                        {(loanWindows[hold.id] || "14") === "custom" && <div className="flex gap-2"><input ref={element => { customDateRefs.current[hold.id] = element; }} type="date" min={earliestDueDate} max={latestDueDate} value={customDueDates[hold.id] || ""} onChange={event => setCustomDueDates(current => ({ ...current, [hold.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900/70 px-2 py-1.5 text-xs text-white focus:border-indigo-400 focus:outline-none" /><button type="button" onClick={() => openCustomDatePicker(hold.id)} className="inline-flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-500/10 px-2 text-xs font-semibold text-teal-200 hover:bg-teal-500/20" aria-label={`Choose return date for ${hold.book?.title}`}><CalendarDays size={14} /><span>Calendar</span></button></div>}
+                        <p className="text-[11px] text-slate-500">{(loanWindows[hold.id] || "14") === "custom" ? "Open Calendar to choose the day, month, and year within 90 days." : `Due ${new Date(`${dateAfter(Number(loanWindows[hold.id] || "14"))}T00:00:00`).toLocaleDateString()}`}</p>
                       </div>
                     </td>
                   </tr>
