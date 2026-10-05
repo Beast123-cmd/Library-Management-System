@@ -160,6 +160,12 @@ class HoldQueueStatus(str, enum.Enum):
     expired = "expired"
 
 
+class AcquisitionRequestStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    declined = "declined"
+
+
 # ==============================================================================
 # HOLD QUEUE MODEL
 # ==============================================================================
@@ -176,3 +182,20 @@ class HoldQueue(Base):
     # Relationships
     user = relationship("User")
     book = relationship("Book")
+
+
+class AcquisitionRequest(Base):
+    __tablename__ = "acquisition_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    author = Column(String(150), nullable=True)
+    isbn = Column(String(20), nullable=True)
+    reason = Column(Text, nullable=True)
+    status = Column(SAEnum(AcquisitionRequestStatus, native_enum=False), default=AcquisitionRequestStatus.pending, nullable=False, index=True)
+    staff_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")

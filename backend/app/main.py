@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, books, transactions, users, dashboard, analytics, holds
+from app.api.v1 import acquisitions, auth, books, transactions, users, dashboard, analytics, holds
 from app.core.config import settings
 from app.core.holds import release_expired_holds
 from app.db.database import AsyncSessionLocal
@@ -60,6 +60,7 @@ app.include_router(users.router,        prefix=API_PREFIX)
 app.include_router(dashboard.router,    prefix=API_PREFIX)
 app.include_router(analytics.router,    prefix=API_PREFIX)
 app.include_router(holds.router,        prefix=API_PREFIX)
+app.include_router(acquisitions.router, prefix=API_PREFIX)
 
 
 @app.get("/api/health", tags=["Health"])

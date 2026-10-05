@@ -202,6 +202,18 @@ class FineRecordOut(BaseModel):
     note: Optional[str] = None
 
 
+class AcquisitionRequestCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    author: Optional[str] = Field(None, max_length=150)
+    isbn: Optional[str] = Field(None, max_length=20)
+    reason: Optional[str] = Field(None, max_length=1000)
+
+
+class AcquisitionRequestReview(BaseModel):
+    status: str = Field(..., pattern="^(approved|declined)$")
+    staff_note: Optional[str] = Field(None, max_length=1000)
+
+
 # ==============================================================================
 # HOLD QUEUE SCHEMAS
 # ==============================================================================
