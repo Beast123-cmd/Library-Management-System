@@ -70,6 +70,9 @@
   background-color: var(--surface) !important;
 }
 
+.app-sidebar, .app-mobile-bar { background: var(--sidebar-bg); }
+.app-mobile-overlay { background: rgba(2, 9, 11, 0.7); }
+
 * { box-sizing: border-box; }
 
 body {
@@ -256,6 +259,17 @@ body {
 .light .catalog-card { background: rgba(255,255,255,.88); box-shadow: 0 10px 24px rgba(15,118,110,.08); }
 .light .filter-trigger, .light .filter-select, .light .catalog-filter-input { color: #335a57; background: #f8fffe; }
 .light .catalog-filter-field select, .light .availability-filter, .light .catalog-page-direction, .light .catalog-page-number { color: #335a57; background: #f8fffe; }
+.light .app-mobile-overlay { background: rgba(15, 35, 38, 0.28); }
+.light .bg-slate-800\/50, .light .bg-slate-900\/50, .light .bg-slate-900\/70, .light .bg-slate-900\/95 { background-color: #ffffff !important; }
+.light .bg-slate-950\/20 { background-color: rgba(15, 23, 42, 0.035) !important; }
+.light .bg-slate-950\/80 { background-color: rgba(15, 23, 42, 0.42) !important; }
+.light .text-indigo-400, .light .text-purple-400, .light .text-cyan-400, .light .text-teal-300 { color: #0f766e !important; }
+.light .text-indigo-300, .light .text-purple-300, .light .text-cyan-300, .light .text-teal-200 { color: #115e59 !important; }
+.light .text-emerald-300 { color: #047857 !important; }
+.light .text-amber-300 { color: #a16207 !important; }
+.light .text-red-300, .light .text-rose-300 { color: #be123c !important; }
+.light input, .light select, .light textarea { color: var(--text); }
+.light option { color: #102a2e; background: #ffffff; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
