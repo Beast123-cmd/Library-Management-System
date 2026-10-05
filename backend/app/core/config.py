@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # Database pool controls can be tuned per Render instance without a code change.
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_RECYCLE: int = 1800
+    CATALOG_CACHE_TTL_SECONDS: int = 30
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

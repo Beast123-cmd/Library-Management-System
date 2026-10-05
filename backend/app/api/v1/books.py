@@ -13,6 +13,7 @@ from app.core.dependencies import get_current_user, get_current_admin
 from app.models.models import User
 from app.core.copies import add_copies
 from app.core.catalog_cache import catalog_cache
+from app.core.config import settings
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -91,7 +92,7 @@ async def list_books(
         per_page=per_page,
         data=[BookOut.model_validate(b) for b in books]
     )
-    catalog_cache.set(cache_key, payload.model_dump(mode="json"), ttl_seconds=30)
+    catalog_cache.set(cache_key, payload.model_dump(mode="json"), ttl_seconds=settings.CATALOG_CACHE_TTL_SECONDS)
     if response:
         response.headers["Cache-Control"] = "private, max-age=30"
         response.headers["Vary"] = "Authorization"

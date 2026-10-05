@@ -149,9 +149,9 @@ function MemberDashboard({ user }: { user: any }) {
                   {(book.category || book.language) && <p className="text-indigo-300 text-xs mt-2">{[book.category, book.language].filter(Boolean).join(" · ")}</p>}
                 </div>
                 <p className={`text-xs mt-3 ${book.available_copies > 0 ? "text-emerald-400" : "text-red-400"}`}>{book.available_copies > 0 ? `${book.available_copies} available now` : "Currently unavailable"}</p>
-                <a href="/dashboard/books" className="mt-4 block w-full text-center py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-semibold hover:bg-indigo-600/40 transition-colors">
+                <Link href={`/dashboard/books/${book.id}`} className="mt-4 block w-full text-center py-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-xs font-semibold hover:bg-indigo-600/40 transition-colors">
                   View Details
-                </a>
+                </Link>
               </div>
             </div>
           ))}
