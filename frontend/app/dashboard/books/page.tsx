@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, SlidersHorizontal, X, MapPin, Download, Upload, Grid2X2, List } from "lucide-react";
+import { Search, Plus, BookOpen, Edit, Trash2, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, SlidersHorizontal, X, MapPin, Download, Upload, Grid2X2, List, CalendarDays } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import toast from "react-hot-toast";
@@ -18,6 +18,7 @@ export default function BooksPage() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const importInputRef = useRef<HTMLInputElement>(null);
+  const returnDateInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -64,6 +65,12 @@ export default function BooksPage() {
   const [expectedReturnDate, setExpectedReturnDate] = useState(() => localDateAfter(14));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  const openReturnDatePicker = () => {
+    const input = returnDateInputRef.current;
+    if (!input) return;
+    try { input.showPicker(); } catch { input.focus(); }
+  };
 
   // Query all members for the checkout dropdown
   const { data: membersData } = useQuery({
@@ -245,16 +252,8 @@ export default function BooksPage() {
                   ))}
                 </div>
 
-                <input
-                  type="date"
-                  min={localDateAfter(1)}
-                  max={localDateAfter(90)}
-                  value={expectedReturnDate}
-                  onChange={(e) => setExpectedReturnDate(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all"
-                  required
-                />
-                <p className="text-[11px] text-slate-500">Choose a preset, or set a date within the next 90 days.</p>
+                <div className="flex gap-2"><input ref={returnDateInputRef} type="date" min={localDateAfter(1)} max={localDateAfter(90)} value={expectedReturnDate} onChange={(e) => setExpectedReturnDate(e.target.value)} className="min-w-0 flex-1 bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all" required /><button type="button" onClick={openReturnDatePicker} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-teal-400/30 bg-teal-500/10 px-3 text-xs font-semibold text-teal-200 hover:bg-teal-500/20" aria-label="Choose return date from calendar"><CalendarDays size={17} /><span className="hidden sm:inline">Calendar</span></button></div>
+                <p className="text-[11px] text-slate-500">Open Calendar to choose the day, month, and year. Dates are limited to the next 90 days.</p>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
