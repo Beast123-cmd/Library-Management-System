@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { BarChart3, TrendingUp, BookOpen, Users, Activity, ArrowLeftRight } from "lucide-react";
+import { BarChart3, TrendingUp, BookOpen, Users, Activity, ArrowLeftRight, Download } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -34,6 +34,20 @@ const mockTopBooksData = [
 
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
+
+  const exportReport = async () => {
+    try {
+      const response = await api.get("/analytics/export", { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "library-analytics-report.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert("The analytics report could not be downloaded. Please try again.");
+    }
+  };
 
   // Queries to show actual counts on stats cards
   const { data: books } = useQuery({
@@ -85,11 +99,9 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <BarChart3 className="text-indigo-400" size={26} /> Analytics Dashboard
-        </h1>
-        <p className="text-slate-400 text-sm mt-1">Real-time usage metrics and library distribution trends.</p>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><BarChart3 className="text-indigo-400" size={26} /> Analytics Dashboard</h1><p className="text-slate-400 text-sm mt-1">Circulation, catalogue composition, and member activity in one operational view.</p></div>
+        <button type="button" onClick={exportReport} className="inline-flex w-fit items-center gap-2 rounded-xl border border-teal-400/25 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-200 transition-colors hover:bg-teal-500/20"><Download size={16} /> Download CSV report</button>
       </motion.div>
 
       {/* Grid Summary */}

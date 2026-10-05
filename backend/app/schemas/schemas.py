@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 # ==============================================================================
@@ -133,6 +133,16 @@ class TransactionCreate(BaseModel):
     book_id: int
     copy_id: Optional[int] = None
     expected_return_date: date
+
+    @field_validator("expected_return_date")
+    @classmethod
+    def validate_return_window(cls, value: date) -> date:
+        today = date.today()
+        if value < today:
+            raise ValueError("Return date cannot be in the past")
+        if value > date.fromordinal(today.toordinal() + 90):
+            raise ValueError("Return date must be within the next 90 days")
+        return value
 
 
 class ReturnRequest(BaseModel):

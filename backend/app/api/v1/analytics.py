@@ -1,9 +1,13 @@
+import csv
+import io
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.db.database import get_db
 from app.models.models import Book, Transaction, User
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_admin
 import datetime
 from calendar import month_abbr
 from typing import Dict, Any
@@ -13,7 +17,7 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_analytics_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    _: User = Depends(get_current_admin)
 ):
     """Retrieve dynamic analytics metrics for charts."""
     
@@ -47,34 +51,18 @@ async def get_analytics_stats(
                 
     trend_list = [{"name": name, "issues": data["issues"], "returns": data["returns"]} for name, data in trend_dict.items()]
 
-    # 2. Book Genre Distribution (in-memory heuristic classification)
-    books_result = await db.execute(select(Book.title))
-    books = books_result.scalars().all()
-    
-    categories = {
-        "Fiction": 0,
-        "Science & Tech": 0,
-        "History & Bio": 0,
-        "Self-Help": 0
-    }
-    
-    for title in books:
-        t = title.lower()
-        if any(w in t for w in ["great", "mockingbird", "1984", "orwell", "potter", "alchemist", "gatsby", "pride", "catcher", "jane", "stone"]):
-            categories["Fiction"] += 1
-        elif any(w in t for w in ["clean", "code", "programming", "javascript", "python", "sql", "pragmatic", "design", "patterns", "refactoring"]):
-            categories["Science & Tech"] += 1
-        elif any(w in t for w in ["steve", "jobs", "sapiens", "biography", "history", "empire", "civilization", "historical"]):
-            categories["History & Bio"] += 1
-        else:
-            categories["Self-Help"] += 1
-            
-    total = len(books) or 1
+    # 2. Real catalogue distribution based on the librarian's categories.
+    category_rows = (await db.execute(
+        select(func.coalesce(Book.category, "Uncategorized"), func.count(Book.id))
+        .group_by(func.coalesce(Book.category, "Uncategorized"))
+        .order_by(desc(func.count(Book.id)))
+        .limit(6)
+    )).all()
+    total = sum(row[1] for row in category_rows) or 1
+    colors = ["#6366f1", "#a855f7", "#06b6d4", "#10b981", "#f59e0b", "#ec4899"]
     category_list = [
-        {"name": "Fiction", "value": round((categories["Fiction"] / total) * 100, 1), "color": "#6366f1"},
-        {"name": "Science & Tech", "value": round((categories["Science & Tech"] / total) * 100, 1), "color": "#a855f7"},
-        {"name": "History & Bio", "value": round((categories["History & Bio"] / total) * 100, 1), "color": "#06b6d4"},
-        {"name": "Self-Help", "value": round((categories["Self-Help"] / total) * 100, 1), "color": "#10b981"},
+        {"name": name, "value": round((count / total) * 100, 1), "color": colors[index % len(colors)]}
+        for index, (name, count) in enumerate(category_rows)
     ]
 
     # 3. Top Circulated Books
@@ -92,3 +80,29 @@ async def get_analytics_stats(
         "categoryData": category_list,
         "topBooksData": top_books_list
     }
+
+
+@router.get("/export")
+async def export_analytics(
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    """Download a compact CSV report containing the current operational metrics."""
+    stats = await get_analytics_stats(db, current_admin)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["section", "label", "value"])
+    writer.writerow(["summary", "Generated on", datetime.date.today().isoformat()])
+    writer.writerow(["summary", "Total titles", (await db.execute(select(func.count()).select_from(Book))).scalar_one()])
+    writer.writerow(["summary", "Total members", (await db.execute(select(func.count()).select_from(User))).scalar_one()])
+    writer.writerow(["summary", "Total transactions", (await db.execute(select(func.count()).select_from(Transaction))).scalar_one()])
+    for point in stats["transactionTrendData"]:
+        writer.writerow(["monthly circulation", point["name"], f"Issued: {point['issues']}; Returned: {point['returns']}"])
+    for category in stats["categoryData"]:
+        writer.writerow(["catalogue category", category["name"], f"{category['value']}%"])
+    for book in stats["topBooksData"]:
+        writer.writerow(["top circulated books", book["name"], book["count"]])
+    return StreamingResponse(
+        iter([output.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="library-analytics-report.csv"'},
+    )

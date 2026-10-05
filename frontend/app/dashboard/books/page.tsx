@@ -8,6 +8,12 @@ import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import toast from "react-hot-toast";
 
+function localDateAfter(days: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 export default function BooksPage() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
@@ -60,9 +66,7 @@ export default function BooksPage() {
 
   const [selectedBookForIssue, setSelectedBookForIssue] = useState<any>(null);
   const [selectedMemberId, setSelectedMemberId] = useState("");
-  const [expectedReturnDate, setExpectedReturnDate] = useState(() => {
-    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  });
+  const [expectedReturnDate, setExpectedReturnDate] = useState(() => localDateAfter(14));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -147,9 +151,10 @@ export default function BooksPage() {
       toast.error("Please select a member.");
       return;
     }
-    const today = new Date().toISOString().split("T")[0];
-    if (expectedReturnDate < today) {
-      toast.error("Return date cannot be in the past.");
+    const earliestReturnDate = localDateAfter(1);
+    const latestReturnDate = localDateAfter(90);
+    if (expectedReturnDate < earliestReturnDate || expectedReturnDate > latestReturnDate) {
+      toast.error("Choose a return date between tomorrow and 90 days from now.");
       return;
     }
     setIsSubmitting(true);
@@ -417,16 +422,14 @@ export default function BooksPage() {
                 </div>
                 
                 <div className="flex gap-2 mb-2">
-                  {[7, 14, 30].map((days) => (
+                  {[7, 14, 21, 30].map((days) => (
                     <button
                       key={days}
                       type="button"
                       onClick={() => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + days);
-                        setExpectedReturnDate(d.toISOString().split("T")[0]);
+                        setExpectedReturnDate(localDateAfter(days));
                       }}
-                      className="flex-1 py-2 text-xs font-semibold bg-white/5 hover:bg-indigo-600/20 border border-white/10 hover:border-indigo-500/50 rounded-xl text-indigo-300 hover:text-indigo-200 transition-all cursor-pointer"
+                      className={`flex-1 py-2 text-xs font-semibold border rounded-xl transition-all cursor-pointer ${expectedReturnDate === localDateAfter(days) ? "bg-indigo-600/30 border-indigo-400/60 text-white" : "bg-white/5 hover:bg-indigo-600/20 border-white/10 hover:border-indigo-500/50 text-indigo-300 hover:text-indigo-200"}`}
                     >
                       {days} Days
                     </button>
@@ -435,12 +438,14 @@ export default function BooksPage() {
 
                 <input
                   type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={localDateAfter(1)}
+                  max={localDateAfter(90)}
                   value={expectedReturnDate}
                   onChange={(e) => setExpectedReturnDate(e.target.value)}
                   className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all"
                   required
                 />
+                <p className="text-[11px] text-slate-500">Choose a preset, or set a date within the next 90 days.</p>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
