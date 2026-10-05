@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle, CalendarDays, Clock, TrendingUp, Bookmark } from "lucide-react";
+import { BookOpen, Users, ArrowLeftRight, AlertCircle, DollarSign, AlertTriangle, CalendarDays, Clock, TrendingUp, Bookmark, LogOut, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -197,7 +197,7 @@ function MemberDashboard({ user }: { user: any }) {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const { data: stats, isLoading } = useQuery({
@@ -222,18 +222,19 @@ export default function DashboardPage() {
     { icon: BookOpen,        label: "Total Books",       value: kpis?.total_books,        color: "bg-indigo-600" },
     { icon: Users,           label: "Total Members",     value: kpis?.total_members,      color: "bg-cyan-600" },
     { icon: ArrowLeftRight,  label: "Active Loans",      value: kpis?.active_loans,      color: "bg-purple-600" },
-    { icon: DollarSign,      label: "Total Fines",       value: kpis?.total_fines !== undefined ? `₹${kpis.total_fines.toFixed(2)}` : undefined, color: "bg-emerald-600" },
+    { icon: DollarSign,      label: "Outstanding Fines", value: kpis?.outstanding_fines !== undefined ? `₹${kpis.outstanding_fines.toFixed(2)}` : undefined, color: "bg-emerald-600" },
   ];
 
   return (
     <div className="space-y-8">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-3xl font-bold text-white">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div><h1 className="text-3xl font-bold text-white">
           Good {new Date().getHours() < 12 ? "morning" : "afternoon"},{" "}
           <span className="gradient-text">{user?.name?.split(" ")[0]} 👋</span>
         </h1>
-        <p className="text-slate-400 mt-1">Here&apos;s what&apos;s happening in your library today.</p>
+        <p className="text-slate-400 mt-1">Here&apos;s what&apos;s happening in your library today.</p></div>
+        <div className="flex w-fit items-center gap-2"><Link href="/dashboard/profile" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/10"><Settings size={16} /> Account & settings</Link><button onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/20"><LogOut size={16} /> Sign out</button></div>
       </motion.div>
 
       {/* Stat Cards */}

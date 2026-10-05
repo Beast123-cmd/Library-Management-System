@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from app.db.database import get_db
-from app.models.models import Book, HoldQueue, HoldQueueStatus, User, Transaction, TransactionStatus, UserRole
+from app.models.models import Book, FinePayment, HoldQueue, HoldQueueStatus, User, Transaction, TransactionStatus, UserRole
 from app.core.dependencies import get_current_admin, get_current_user
 from app.schemas.schemas import TransactionOut, BookOut
 from typing import Dict, Any, List
@@ -87,10 +87,12 @@ async def get_dashboard_stats(
         select(func.count()).select_from(Transaction).where(Transaction.status == TransactionStatus.issued)
     )).scalar() or 0
 
-    # 4. Total Fines (Sum of fine_amount)
-    total_fines = (await db.execute(
-        select(func.sum(Transaction.fine_amount))
-    )).scalar() or 0.0
+    # 4. Outstanding fines only: assessed amount less payments already collected.
+    outstanding_fines = (await db.execute(
+        select(func.coalesce(func.sum(Transaction.fine_amount - func.coalesce(FinePayment.amount, 0.0)), 0.0))
+        .outerjoin(FinePayment, FinePayment.transaction_id == Transaction.id)
+        .where(Transaction.status == TransactionStatus.returned, Transaction.fine_amount > 0)
+    )).scalar_one()
 
     # 5. Low Stock Alert Books (available_copies < 2)
     low_stock_result = await db.execute(
@@ -135,7 +137,7 @@ async def get_dashboard_stats(
             "total_books": total_books,
             "total_members": total_members,
             "active_loans": active_loans,
-            "total_fines": float(total_fines)
+            "outstanding_fines": float(outstanding_fines)
         },
         "low_stock_books": [
             {
