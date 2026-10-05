@@ -44,7 +44,7 @@ export default function AnalyticsPage() {
     enabled: isAdmin,
   });
 
-  const { data: analyticsStats } = useQuery({
+  const { data: analyticsStats, isError: analyticsFailed } = useQuery({
     queryKey: ["analytics-stats"],
     queryFn: () => api.get("/analytics/stats").then(r => r.data),
     enabled: isAdmin,
@@ -105,6 +105,8 @@ export default function AnalyticsPage() {
           ))}
         </div>
       </section>
+
+      {analyticsFailed && <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">Analytics could not be loaded. Refresh the page or try again in a moment.</div>}
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

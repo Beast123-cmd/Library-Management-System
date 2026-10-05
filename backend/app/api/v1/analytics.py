@@ -53,15 +53,15 @@ async def get_analytics_stats(
 
     # 2. Real catalogue distribution based on the librarian's categories.
     category_rows = (await db.execute(
-        select(func.coalesce(Book.category, "Uncategorized"), func.count(Book.id))
-        .group_by(func.coalesce(Book.category, "Uncategorized"))
+        select(Book.category, func.count(Book.id))
+        .group_by(Book.category)
         .order_by(desc(func.count(Book.id)))
         .limit(6)
     )).all()
     total = sum(row[1] for row in category_rows) or 1
     colors = ["#6366f1", "#a855f7", "#06b6d4", "#10b981", "#f59e0b", "#ec4899"]
     category_list = [
-        {"name": name, "value": round((count / total) * 100, 1), "color": colors[index % len(colors)]}
+        {"name": name or "Uncategorized", "value": round((count / total) * 100, 1), "color": colors[index % len(colors)]}
         for index, (name, count) in enumerate(category_rows)
     ]
 
