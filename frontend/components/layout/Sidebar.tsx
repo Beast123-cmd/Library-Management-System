@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeftRight, BarChart3, BookMarked, BookOpen, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Users, X, Bookmark } from "lucide-react";
+import { ArrowLeftRight, BarChart3, BookMarked, BookOpen, ChevronLeft, ChevronRight, CircleDollarSign, LayoutDashboard, Menu, Settings, Users, X, Bookmark } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -15,6 +15,7 @@ const libraryNav = [
 ];
 const staffNav = [
   { href: "/dashboard/holds", label: "Holds & pickup", icon: Bookmark },
+  { href: "/dashboard/fines", label: "Fines", icon: CircleDollarSign },
   { href: "/dashboard/members", label: "Members", icon: Users },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
