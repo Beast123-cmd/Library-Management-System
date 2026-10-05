@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import toast from "react-hot-toast";
 
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
@@ -20,9 +21,7 @@ export default function AnalyticsPage() {
       link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      window.alert("The report could not be downloaded. Please try again.");
-    }
+    } catch { toast.error("The report could not be downloaded. Please try again."); }
   };
 
   const exportReport = () => downloadReport(`/analytics/export?days=${periodDays}`, "library-analytics-report.csv");
