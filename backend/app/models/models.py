@@ -27,6 +27,8 @@ class CopyStatus(str, enum.Enum):
     available = "available"
     issued = "issued"
     on_hold_shelf = "on_hold_shelf"
+    damaged = "damaged"
+    missing = "missing"
     withdrawn = "withdrawn"
 # ==============================================================================
 # USER MODEL

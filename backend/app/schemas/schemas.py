@@ -125,6 +125,11 @@ class BookCopyOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CopyStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(available|damaged|missing|withdrawn)$")
+    note: Optional[str] = Field(None, max_length=500)
+
+
 # ==============================================================================
 # TRANSACTION SCHEMAS
 # ==============================================================================

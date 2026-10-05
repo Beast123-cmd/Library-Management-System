@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import asc, desc, select, func, or_
 from typing import Optional
 from app.db.database import get_db
-from app.models.models import Book, BookCopy, CopyStatus
-from app.schemas.schemas import BookCreate, BookUpdate, BookOut, BookCopyOut, PaginatedResponse
+from app.models.models import AuditLog, Book, BookCopy, CopyStatus
+from app.schemas.schemas import BookCreate, BookUpdate, BookOut, BookCopyOut, CopyStatusUpdate, PaginatedResponse
 from app.core.dependencies import get_current_user, get_current_admin
 from app.models.models import User
 from app.core.copies import add_copies
@@ -208,6 +208,53 @@ async def import_catalogue(
     await db.commit()
     catalog_cache.invalidate()
     return {"created": created, "skipped": skipped, "errors": errors[:20]}
+
+
+@router.get("/copies/audit")
+async def list_copy_audit(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """List physical copies with their current audit-ready status."""
+    rows = (await db.execute(
+        select(BookCopy, Book.title, Book.author, Book.shelf_location)
+        .join(Book, BookCopy.book_id == Book.id)
+        .order_by(Book.title, BookCopy.copy_number)
+    )).all()
+    return [{
+        "id": copy.id, "book_id": copy.book_id, "title": title, "author": author,
+        "shelf_location": shelf_location, "accession_number": copy.accession_number,
+        "copy_number": copy.copy_number, "status": copy.status.value,
+    } for copy, title, author, shelf_location in rows]
+
+
+@router.patch("/copies/{copy_id}/status")
+async def update_copy_status(
+    copy_id: int,
+    payload: CopyStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Record a physical inventory finding without changing active circulation records."""
+    copy = (await db.execute(select(BookCopy).where(BookCopy.id == copy_id).with_for_update())).scalar_one_or_none()
+    if copy is None:
+        raise HTTPException(status_code=404, detail="Copy not found.")
+    if copy.status in (CopyStatus.issued, CopyStatus.on_hold_shelf):
+        raise HTTPException(status_code=400, detail="Check in this copy before changing its inventory status.")
+    previous_status = copy.status.value
+    copy.status = CopyStatus(payload.status)
+    book = await db.get(Book, copy.book_id, with_for_update=True)
+    if book:
+        book.available_copies = (await db.execute(
+            select(func.count()).select_from(BookCopy).where(BookCopy.book_id == book.id, BookCopy.status == CopyStatus.available)
+        )).scalar_one()
+    db.add(AuditLog(
+        admin_id=admin.id, action="copy_inventory_updated", resource="book_copy", resource_id=copy.id,
+        details=f"from={previous_status}; to={payload.status}; note={payload.note or ''}",
+    ))
+    await db.commit()
+    catalog_cache.invalidate()
+    return {"id": copy.id, "status": copy.status.value, "available_copies": book.available_copies if book else 0}
 
 
 @router.get("/{book_id}", response_model=BookOut)
