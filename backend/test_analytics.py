@@ -27,7 +27,7 @@ class AnalyticsTests(unittest.IsolatedAsyncioTestCase):
             db.add_all([admin, member, categorized, uncategorized]); await db.flush()
             db.add(Transaction(user_id=member.id, book_id=categorized.id, issue_date=date.today(), expected_return_date=date.today(), status=TransactionStatus.issued))
             await db.commit()
-            stats = await get_analytics_stats(db, admin)
+            stats = await get_analytics_stats(days=180, db=db, _=admin)
             self.assertEqual(sum(item["value"] for item in stats["categoryData"]), 100.0)
             self.assertIn("Uncategorized", [item["name"] for item in stats["categoryData"]])
             self.assertEqual(stats["topBooksData"][0]["name"], "Fiction")

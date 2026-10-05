@@ -1,7 +1,7 @@
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
@@ -9,47 +9,34 @@ from app.db.database import get_db
 from app.models.models import Book, FinePayment, Transaction, TransactionStatus, User
 from app.core.dependencies import get_current_admin
 import datetime
-from calendar import month_abbr
 from typing import Dict, Any
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_analytics_stats(
+    days: int = Query(180, ge=30, le=365),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin)
 ):
     """Retrieve dynamic analytics metrics for charts."""
     
-    # 1. Transaction Flow (last 6 months)
+    # 1. Period circulation flow, grouped into six equally sized buckets.
     today = datetime.date.today()
-    months = []
-    # Calculate months backward to maintain chronological order
-    for i in range(5, -1, -1):
-        # Subtracting days dynamically, handles year boundaries cleanly
-        d = today - datetime.timedelta(days=i*30)
-        months.append((d.year, d.month, month_abbr[d.month]))
-        
-    trend_dict = {m[2]: {"issues": 0, "returns": 0} for m in months}
-    six_months_ago = today - datetime.timedelta(days=180)
-    
+    period_start = today - datetime.timedelta(days=days - 1)
+    bucket_days = max(1, (days + 5) // 6)
+    buckets = [period_start + datetime.timedelta(days=index * bucket_days) for index in range(6)]
+    trend_list = [{"name": bucket.strftime("%d %b"), "issues": 0, "returns": 0} for bucket in buckets]
     result = await db.execute(
         select(Transaction.issue_date, Transaction.actual_return_date)
-        .where(Transaction.issue_date >= six_months_ago)
+        .where((Transaction.issue_date >= period_start) | (Transaction.actual_return_date >= period_start))
     )
     for row in result.all():
         issue_date, return_date = row[0], row[1]
-        
-        issue_month = month_abbr[issue_date.month]
-        if issue_month in trend_dict:
-            trend_dict[issue_month]["issues"] += 1
-            
-        if return_date:
-            return_month = month_abbr[return_date.month]
-            if return_month in trend_dict:
-                trend_dict[return_month]["returns"] += 1
-                
-    trend_list = [{"name": name, "issues": data["issues"], "returns": data["returns"]} for name, data in trend_dict.items()]
+        for value, key in ((issue_date, "issues"), (return_date, "returns")):
+            if value and value >= period_start:
+                index = min((value - period_start).days // bucket_days, len(trend_list) - 1)
+                trend_list[index][key] += 1
 
     # 2. Real catalogue distribution based on the librarian's categories.
     category_rows = (await db.execute(
@@ -69,13 +56,31 @@ async def get_analytics_stats(
     top_books_result = await db.execute(
         select(Book.title, func.count(Transaction.id).label("txn_count"))
         .join(Transaction, Book.id == Transaction.book_id)
+        .where(Transaction.issue_date >= period_start)
         .group_by(Book.id, Book.title)
         .order_by(desc("txn_count"))
         .limit(5)
     )
     top_books_list = [{"name": r[0], "count": r[1]} for r in top_books_result.all()]
 
+    issued_count = (await db.execute(select(func.count()).select_from(Transaction).where(Transaction.issue_date >= period_start))).scalar_one()
+    returned_count = (await db.execute(select(func.count()).select_from(Transaction).where(Transaction.actual_return_date >= period_start))).scalar_one()
+    overdue_count = (await db.execute(select(func.count()).select_from(Transaction).where(Transaction.status == TransactionStatus.issued, Transaction.expected_return_date < today))).scalar_one()
+    outstanding_fines = (await db.execute(
+        select(func.coalesce(func.sum(Transaction.fine_amount - func.coalesce(FinePayment.amount, 0.0)), 0.0))
+        .outerjoin(FinePayment, FinePayment.transaction_id == Transaction.id)
+        .where(Transaction.status == TransactionStatus.returned, Transaction.fine_amount > 0)
+    )).scalar_one()
+    total_copies, available_copies = (await db.execute(
+        select(func.coalesce(func.sum(Book.total_copies), 0), func.coalesce(func.sum(Book.available_copies), 0))
+    )).one()
+
     return {
+        "periodDays": days,
+        "summary": {
+            "issued": issued_count, "returned": returned_count, "overdue": overdue_count,
+            "outstandingFines": float(outstanding_fines), "totalCopies": total_copies, "availableCopies": available_copies,
+        },
         "transactionTrendData": trend_list,
         "categoryData": category_list,
         "topBooksData": top_books_list
@@ -84,15 +89,19 @@ async def get_analytics_stats(
 
 @router.get("/export")
 async def export_analytics(
+    days: int = Query(180, ge=30, le=365),
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
     """Download a compact CSV report containing the current operational metrics."""
-    stats = await get_analytics_stats(db, current_admin)
+    stats = await get_analytics_stats(days, db, current_admin)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["section", "label", "value"])
     writer.writerow(["summary", "Generated on", datetime.date.today().isoformat()])
+    writer.writerow(["summary", "Reporting period", f"Last {days} days"])
+    for label, value in stats["summary"].items():
+        writer.writerow(["period summary", label, value])
     writer.writerow(["summary", "Total titles", (await db.execute(select(func.count()).select_from(Book))).scalar_one()])
     writer.writerow(["summary", "Total members", (await db.execute(select(func.count()).select_from(User))).scalar_one()])
     writer.writerow(["summary", "Total transactions", (await db.execute(select(func.count()).select_from(Transaction))).scalar_one()])

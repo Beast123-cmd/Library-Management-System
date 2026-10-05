@@ -3,11 +3,13 @@ import { motion } from "framer-motion";
 import { BarChart3, TrendingUp, BookOpen, Users, Activity, ArrowLeftRight, Download, AlertTriangle, CircleDollarSign, PackageCheck } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth();
+  const [periodDays, setPeriodDays] = useState(180);
 
   const downloadReport = async (path: string, filename: string) => {
     try {
@@ -23,18 +25,12 @@ export default function AnalyticsPage() {
     }
   };
 
-  const exportReport = () => downloadReport("/analytics/export", "library-analytics-report.csv");
+  const exportReport = () => downloadReport(`/analytics/export?days=${periodDays}`, "library-analytics-report.csv");
 
   // Queries to show actual counts on stats cards
   const { data: books } = useQuery({
     queryKey: ["books-count"],
     queryFn: () => api.get("/books/?per_page=1").then(r => r.data),
-    enabled: isAdmin,
-  });
-
-  const { data: transactions } = useQuery({
-    queryKey: ["txn-count"],
-    queryFn: () => api.get("/transactions/?per_page=1").then(r => r.data),
     enabled: isAdmin,
   });
 
@@ -45,8 +41,8 @@ export default function AnalyticsPage() {
   });
 
   const { data: analyticsStats, isError: analyticsFailed } = useQuery({
-    queryKey: ["analytics-stats"],
-    queryFn: () => api.get("/analytics/stats").then(r => r.data),
+    queryKey: ["analytics-stats", periodDays],
+    queryFn: () => api.get(`/analytics/stats?days=${periodDays}`).then(r => r.data),
     enabled: isAdmin,
   });
 
@@ -63,15 +59,16 @@ export default function AnalyticsPage() {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><BarChart3 className="text-indigo-400" size={26} /> Analytics Dashboard</h1><p className="text-slate-400 text-sm mt-1">Circulation, catalogue composition, and member activity in one operational view.</p></div>
-        <button type="button" onClick={exportReport} className="inline-flex w-fit items-center gap-2 rounded-xl border border-teal-400/25 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-200 transition-colors hover:bg-teal-500/20"><Download size={16} /> Download CSV report</button>
+        <div className="flex flex-wrap gap-2"><div className="flex rounded-xl border border-white/10 bg-white/5 p-1">{[30, 90, 180].map(days => <button key={days} type="button" onClick={() => setPeriodDays(days)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${periodDays === days ? "bg-indigo-500/25 text-indigo-100" : "text-slate-400 hover:text-white"}`}>{days}d</button>)}</div><button type="button" onClick={exportReport} className="inline-flex w-fit items-center gap-2 rounded-xl border border-teal-400/25 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-200 transition-colors hover:bg-teal-500/20"><Download size={16} /> Download CSV</button></div>
       </motion.div>
 
       {/* Grid Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
-          { label: "Total Book Titles", value: books?.total ?? "—", icon: BookOpen, color: "from-indigo-500/20 to-indigo-600/5", border: "border-indigo-500/20" },
-          { label: "Total Transactions", value: transactions?.total ?? "—", icon: ArrowLeftRight, color: "from-purple-500/20 to-purple-600/5", border: "border-purple-500/20" },
-          { label: "Registered Members", value: members?.total ?? "—", icon: Users, color: "from-cyan-500/20 to-cyan-600/5", border: "border-cyan-500/20" },
+          { label: "Loans issued", value: analyticsStats?.summary?.issued ?? "—", icon: ArrowLeftRight, color: "from-indigo-500/20 to-indigo-600/5", border: "border-indigo-500/20" },
+          { label: "Books returned", value: analyticsStats?.summary?.returned ?? "—", icon: BookOpen, color: "from-cyan-500/20 to-cyan-600/5", border: "border-cyan-500/20" },
+          { label: "Overdue loans", value: analyticsStats?.summary?.overdue ?? "—", icon: AlertTriangle, color: "from-amber-500/20 to-amber-600/5", border: "border-amber-500/20" },
+          { label: "Outstanding fines", value: analyticsStats?.summary?.outstandingFines !== undefined ? `₹${analyticsStats.summary.outstandingFines.toFixed(2)}` : "—", icon: CircleDollarSign, color: "from-rose-500/20 to-rose-600/5", border: "border-rose-500/20" },
         ].map((item, idx) => (
           <motion.div
             key={idx}
@@ -90,6 +87,8 @@ export default function AnalyticsPage() {
           </motion.div>
         ))}
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog titles</p><p className="mt-2 text-xl font-bold text-white">{books?.total ?? "—"}</p></div><div className="rounded-2xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Registered members</p><p className="mt-2 text-xl font-bold text-white">{members?.total ?? "—"}</p></div><div className="rounded-2xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Copies available</p><p className="mt-2 text-xl font-bold text-white">{analyticsStats?.summary ? `${analyticsStats.summary.availableCopies} / ${analyticsStats.summary.totalCopies}` : "—"}</p></div></div>
 
       <section className="glass p-5 sm:p-6">
         <div className="mb-5"><h2 className="text-base font-semibold text-white">Operational reports</h2><p className="mt-1 text-sm text-slate-400">Download the lists staff need for follow-up, payment collection, and shelf checks.</p></div>
